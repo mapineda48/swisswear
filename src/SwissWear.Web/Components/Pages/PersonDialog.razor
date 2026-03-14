@@ -1,0 +1,150 @@
+@using SwissWear.Web.Data
+@using SwissWear.Web.Services
+@inject PersonService PersonService
+@inject IStringLocalizer<AppStrings> L
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" @bind-IsValid="_formValid">
+            <MudGrid>
+                <MudItem xs="12" Class="d-flex justify-center">
+                    @if (_previewUrl is not null)
+                    {
+                        <MudAvatar Size="Size.Large" Style="width:100px; height:100px;">
+                            <MudImage Src="@_previewUrl" Alt="Preview" />
+                        </MudAvatar>
+                    }
+                    else if (!string.IsNullOrEmpty(Person.PhotoUrl))
+                    {
+                        <MudAvatar Size="Size.Large" Style="width:100px; height:100px;">
+                            <MudImage Src="@Person.PhotoUrl" Alt="@Person.FirstName" />
+                        </MudAvatar>
+                    }
+                    else
+                    {
+                        <MudAvatar Color="Color.Primary" Size="Size.Large" Style="width:100px; height:100px;">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Large" />
+                        </MudAvatar>
+                    }
+                </MudItem>
+
+                <MudItem xs="12" Class="d-flex justify-center">
+                    <MudButton HtmlTag="label" Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.CloudUpload" for="fileInput">
+                        @L["Dialog_UploadPhoto"]
+                    </MudButton>
+                    <InputFile id="fileInput" accept=".jpg,.jpeg,.png,.webp" OnChange="OnFileSelected"
+                               style="display:none;" />
+                </MudItem>
+
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Person.FirstName" Label="@L["People_FirstName"].Value" Required="true"
+                                  RequiredError="@L["Dialog_FirstNameRequired"].Value" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Person.LastName" Label="@L["People_LastName"].Value" Required="true"
+                                  RequiredError="@L["Dialog_LastNameRequired"].Value" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Person.Email" Label="@L["People_Email"].Value" InputType="InputType.Email" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="Person.Phone" Label="@L["People_Phone"].Value" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudDatePicker @bind-Date="_birthDate" Label="@L["People_BirthDate"].Value" DateFormat="dd/MM/yyyy"
+                                   MaxDate="DateTime.Today" Editable="true" />
+                </MudItem>
+            </MudGrid>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">@L["Common_Cancel"]</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="@(!_formValid || _saving)">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            @(IsEdit ? L["Common_Save"] : L["Common_Create"])
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public Person Person { get; set; } = new();
+
+    [Parameter]
+    public bool IsEdit { get; set; }
+
+    private MudForm _form = null!;
+    private bool _formValid;
+    private bool _saving;
+    private IBrowserFile? _selectedFile;
+    private string? _previewUrl;
+    private DateTime? _birthDate;
+
+    protected override void OnParametersSet()
+    {
+        _birthDate = Person.BirthDate?.ToDateTime(TimeOnly.MinValue);
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        _selectedFile = file;
+
+        // Generate preview
+        var buffer = new byte[file.Size];
+        await using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+        var bytesRead = await stream.ReadAsync(buffer);
+        _previewUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer, 0, bytesRead)}";
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        await _form.ValidateAsync();
+        if (!_formValid) return;
+
+        _saving = true;
+
+        try
+        {
+            Person.BirthDate = _birthDate.HasValue ? DateOnly.FromDateTime(_birthDate.Value) : null;
+
+            Stream? photoStream = null;
+            string? fileName = null;
+            string? contentType = null;
+
+            if (_selectedFile is not null)
+            {
+                photoStream = _selectedFile.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                fileName = _selectedFile.Name;
+                contentType = _selectedFile.ContentType;
+            }
+
+            if (IsEdit)
+            {
+                await PersonService.UpdateAsync(Person, photoStream, fileName, contentType);
+            }
+            else
+            {
+                await PersonService.CreateAsync(Person, photoStream, fileName, contentType);
+            }
+
+            photoStream?.Dispose();
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch
+        {
+            _saving = false;
+            StateHasChanged();
+            throw;
+        }
+    }
+}

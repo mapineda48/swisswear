@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/Migrations/
+*.md
+.git
+.gitignore
+.editorconfig
+.dockerignore
+docker-compose.yml
+docker-compose.override.yml
+CLAUDE.md

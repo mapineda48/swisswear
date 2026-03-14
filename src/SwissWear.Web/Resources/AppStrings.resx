@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+
+  <!-- Navigation -->
+  <data name="Nav_Home" xml:space="preserve"><value>Home</value></data>
+  <data name="Nav_People" xml:space="preserve"><value>People</value></data>
+
+  <!-- Home Page -->
+  <data name="Home_Title" xml:space="preserve"><value>SwissWear</value></data>
+  <data name="Home_Subtitle" xml:space="preserve"><value>Testing Lab — Blazor Server + .NET 10</value></data>
+  <data name="Home_WhatIsThis" xml:space="preserve"><value>What is this project?</value></data>
+  <data name="Home_Description" xml:space="preserve"><value>SwissWear is a personal lab project to experiment with modern web development technologies in the .NET ecosystem. It serves as a testing ground to explore architecture patterns, UI components, and cloud services.</value></data>
+  <data name="Home_TechStack" xml:space="preserve"><value>Tech Stack</value></data>
+  <data name="Home_Tech_Blazor" xml:space="preserve"><value>.NET 10 (LTS) — Blazor Server with InteractiveServer rendering</value></data>
+  <data name="Home_Tech_MudBlazor" xml:space="preserve"><value>MudBlazor 9 — Material Design Components</value></data>
+  <data name="Home_Tech_Postgres" xml:space="preserve"><value>PostgreSQL 17 — Relational database</value></data>
+  <data name="Home_Tech_Azure" xml:space="preserve"><value>Azure Blob Storage — File storage (Azurite for development)</value></data>
+  <data name="Home_Tech_EF" xml:space="preserve"><value>Entity Framework Core 10 — ORM with migrations</value></data>
+  <data name="Home_Tech_Docker" xml:space="preserve"><value>Docker Compose — Local development infrastructure</value></data>
+  <data name="Home_Modules" xml:space="preserve"><value>Available Modules</value></data>
+  <data name="Home_Module_People" xml:space="preserve"><value>People — CRUD with photo upload</value></data>
+  <data name="Home_QuickStart" xml:space="preserve"><value>Quick Start</value></data>
+
+  <!-- People Page -->
+  <data name="People_Title" xml:space="preserve"><value>People</value></data>
+  <data name="People_NewPerson" xml:space="preserve"><value>New Person</value></data>
+  <data name="People_Photo" xml:space="preserve"><value>Photo</value></data>
+  <data name="People_FirstName" xml:space="preserve"><value>First Name</value></data>
+  <data name="People_LastName" xml:space="preserve"><value>Last Name</value></data>
+  <data name="People_Email" xml:space="preserve"><value>Email</value></data>
+  <data name="People_Phone" xml:space="preserve"><value>Phone</value></data>
+  <data name="People_BirthDate" xml:space="preserve"><value>Birth Date</value></data>
+  <data name="People_Actions" xml:space="preserve"><value>Actions</value></data>
+  <data name="People_NoRecords" xml:space="preserve"><value>No people found.</value></data>
+  <data name="People_EditPerson" xml:space="preserve"><value>Edit Person</value></data>
+  <data name="People_CreatedSuccess" xml:space="preserve"><value>Person created successfully</value></data>
+  <data name="People_UpdatedSuccess" xml:space="preserve"><value>Person updated successfully</value></data>
+  <data name="People_Deleted" xml:space="preserve"><value>Person deleted</value></data>
+  <data name="People_ConfirmDeleteTitle" xml:space="preserve"><value>Confirm Deletion</value></data>
+  <data name="People_ConfirmDeleteMessage" xml:space="preserve"><value>Are you sure you want to delete {0} {1}?</value></data>
+
+  <!-- Person Dialog -->
+  <data name="Dialog_UploadPhoto" xml:space="preserve"><value>Upload Photo</value></data>
+  <data name="Dialog_FirstNameRequired" xml:space="preserve"><value>First name is required</value></data>
+  <data name="Dialog_LastNameRequired" xml:space="preserve"><value>Last name is required</value></data>
+
+  <!-- Common -->
+  <data name="Common_Save" xml:space="preserve"><value>Save</value></data>
+  <data name="Common_Create" xml:space="preserve"><value>Create</value></data>
+  <data name="Common_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Common_Delete" xml:space="preserve"><value>Delete</value></data>
+</root>

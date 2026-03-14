@@ -1,0 +1,23 @@
+{
+  "dotnet.defaultSolution": "SwissWear.slnx",
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "ms-dotnettools.csharp",
+  "files.exclude": {
+    "**/bin": true,
+    "**/obj": true
+  },
+  "omnisharp.enableRoslynAnalyzers": true,
+  "cSpell.language": "en",
+  "cSpell.words": [
+    "Azurite",
+    "Blazor",
+    "MudBlazor",
+    "Npgsql",
+    "Hsts",
+    "Antiforgery",
+    "appsettings",
+    "coreclr",
+    "dotnet",
+    "resx"
+  ]
+}

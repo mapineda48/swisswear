@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "ms-dotnettools.csdevkit",
+    "ms-dotnettools.csharp",
+    "ms-dotnettools.blazorwasm-companion",
+    "ms-azuretools.vscode-docker",
+    "editorconfig.editorconfig",
+    "streetsidesoftware.code-spell-checker",
+    "patcx.vscode-nuget-gallery",
+    "adrianwilczynski.namespace"
+  ]
+}

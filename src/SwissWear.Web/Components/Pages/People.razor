@@ -1,0 +1,142 @@
+@page "/people"
+@using SwissWear.Web.Data
+@using SwissWear.Web.Services
+@inject PersonService PersonService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IStringLocalizer<AppStrings> L
+
+<PageTitle>@L["People_Title"]</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">@L["People_Title"]</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+           OnClick="OpenCreateDialog" Class="mb-4">
+    @L["People_NewPerson"]
+</MudButton>
+
+<MudTable Items="_people" Hover="true" Striped="true" Loading="_loading" LoadingProgressColor="Color.Primary"
+          Dense="true" Bordered="false">
+    <HeaderContent>
+        <MudTh>@L["People_Photo"]</MudTh>
+        <MudTh>@L["People_FirstName"]</MudTh>
+        <MudTh>@L["People_LastName"]</MudTh>
+        <MudTh>@L["People_Email"]</MudTh>
+        <MudTh>@L["People_Phone"]</MudTh>
+        <MudTh>@L["People_BirthDate"]</MudTh>
+        <MudTh>@L["People_Actions"]</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>
+            @if (!string.IsNullOrEmpty(context.PhotoUrl))
+            {
+                <MudAvatar Size="Size.Medium">
+                    <MudImage Src="@context.PhotoUrl" Alt="@context.FirstName" />
+                </MudAvatar>
+            }
+            else
+            {
+                <MudAvatar Color="Color.Primary" Size="Size.Medium">
+                    @context.FirstName[0]@context.LastName[0]
+                </MudAvatar>
+            }
+        </MudTd>
+        <MudTd DataLabel="@L["People_FirstName"].Value">@context.FirstName</MudTd>
+        <MudTd DataLabel="@L["People_LastName"].Value">@context.LastName</MudTd>
+        <MudTd DataLabel="@L["People_Email"].Value">@context.Email</MudTd>
+        <MudTd DataLabel="@L["People_Phone"].Value">@context.Phone</MudTd>
+        <MudTd DataLabel="@L["People_BirthDate"].Value">@context.BirthDate?.ToString("dd/MM/yyyy")</MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                           OnClick="() => OpenEditDialog(context)" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                           OnClick="() => ConfirmDelete(context)" />
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText>@L["People_NoRecords"]</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private List<Person> _people = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPeople();
+    }
+
+    private async Task LoadPeople()
+    {
+        _loading = true;
+        _people = await PersonService.GetAllAsync();
+        _loading = false;
+    }
+
+    private async Task OpenCreateDialog()
+    {
+        var parameters = new DialogParameters<PersonDialog>
+        {
+            { x => x.Person, new Person() },
+            { x => x.IsEdit, false }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<PersonDialog>(L["People_NewPerson"].Value, parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
+        {
+            await LoadPeople();
+            Snackbar.Add(L["People_CreatedSuccess"].Value, Severity.Success);
+        }
+    }
+
+    private async Task OpenEditDialog(Person person)
+    {
+        var personCopy = new Person
+        {
+            Id = person.Id,
+            FirstName = person.FirstName,
+            LastName = person.LastName,
+            Email = person.Email,
+            Phone = person.Phone,
+            BirthDate = person.BirthDate,
+            PhotoUrl = person.PhotoUrl,
+            CreatedAt = person.CreatedAt
+        };
+
+        var parameters = new DialogParameters<PersonDialog>
+        {
+            { x => x.Person, personCopy },
+            { x => x.IsEdit, true }
+        };
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true };
+        var dialog = await DialogService.ShowAsync<PersonDialog>(L["People_EditPerson"].Value, parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
+        {
+            await LoadPeople();
+            Snackbar.Add(L["People_UpdatedSuccess"].Value, Severity.Success);
+        }
+    }
+
+    private async Task ConfirmDelete(Person person)
+    {
+        var result = await DialogService.ShowMessageBoxAsync(
+            L["People_ConfirmDeleteTitle"].Value,
+            string.Format(L["People_ConfirmDeleteMessage"].Value, person.FirstName, person.LastName),
+            yesText: L["Common_Delete"].Value,
+            noText: L["Common_Cancel"].Value);
+
+        if (result == true)
+        {
+            await PersonService.DeleteAsync(person.Id);
+            await LoadPeople();
+            Snackbar.Add(L["People_Deleted"].Value, Severity.Info);
+        }
+    }
+}
