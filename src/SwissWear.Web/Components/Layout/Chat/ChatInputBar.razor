@@ -1,0 +1,80 @@
+@using SwissWear.Web.Services
+@inject IStringLocalizer<AppStrings> L
+
+<div class="chat-input-bar">
+    <InputFile @ref="_fileInput" OnChange="OnImagesSelected" accept="image/*" multiple style="display: none;" id="chat-file-input" />
+    <MudIconButton Icon="@Icons.Material.Filled.AttachFile"
+                   Size="Size.Small"
+                   Style="color: var(--mud-palette-text-secondary);"
+                   OnClick="OnAttachClicked" />
+
+    <div class="chat-input-field">
+        <input @bind="CurrentText"
+               @bind:event="oninput"
+               @onkeyup="HandleKeyUp"
+               placeholder="@L["Chat_MessagePlaceholder"]"
+               class="chat-input" />
+    </div>
+
+    @if (string.IsNullOrWhiteSpace(CurrentText) && !HasPendingImages)
+    {
+        <MudIconButton Icon="@Icons.Material.Filled.Mic"
+                       Size="Size.Small"
+                       Style="color: var(--mud-palette-text-secondary);"
+                       OnClick="OnMicClicked" />
+    }
+    else
+    {
+        <MudIconButton Icon="@Icons.Material.Filled.Send"
+                       Size="Size.Small"
+                       Color="Color.Primary"
+                       OnClick="HandleSend" />
+    }
+</div>
+
+@code {
+    private InputFile? _fileInput;
+
+    [Parameter]
+    public string CurrentText { get; set; } = "";
+
+    [Parameter]
+    public EventCallback<string> CurrentTextChanged { get; set; }
+
+    [Parameter]
+    public bool HasPendingImages { get; set; }
+
+    [Parameter]
+    public EventCallback OnSend { get; set; }
+
+    [Parameter]
+    public EventCallback OnMicClicked { get; set; }
+
+    [Parameter]
+    public EventCallback OnAttachClicked { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnTextChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<InputFileChangeEventArgs> OnFilesSelected { get; set; }
+
+    private async Task HandleKeyUp(KeyboardEventArgs e)
+    {
+        await CurrentTextChanged.InvokeAsync(CurrentText);
+        await OnTextChanged.InvokeAsync(CurrentText);
+
+        if (e.Key == "Enter")
+            await OnSend.InvokeAsync();
+    }
+
+    private async Task HandleSend()
+    {
+        await OnSend.InvokeAsync();
+    }
+
+    private async Task OnImagesSelected(InputFileChangeEventArgs e)
+    {
+        await OnFilesSelected.InvokeAsync(e);
+    }
+}

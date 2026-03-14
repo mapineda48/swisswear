@@ -1,0 +1,65 @@
+@using SwissWear.Web.Services
+
+<div class="chat-image-grid">
+    @if (Images.Count == 1)
+    {
+        <img src="data:@Images[0].ContentType;base64,@Images[0].Base64"
+             @onclick="() => OnImageClicked.InvokeAsync(0)"
+             class="chat-image-single" alt="image" />
+    }
+    else if (Images.Count == 2)
+    {
+        <div class="chat-grid-2">
+            @for (var i = 0; i < 2; i++)
+            {
+                var idx = i;
+                <img src="data:@Images[idx].ContentType;base64,@Images[idx].Base64"
+                     @onclick="() => OnImageClicked.InvokeAsync(idx)"
+                     class="chat-image-tile" alt="image" />
+            }
+        </div>
+    }
+    else if (Images.Count == 3)
+    {
+        <div class="chat-grid-3">
+            <img src="data:@Images[0].ContentType;base64,@Images[0].Base64"
+                 @onclick="() => OnImageClicked.InvokeAsync(0)"
+                 class="chat-image-tile chat-image-span" alt="image" />
+            @for (var i = 1; i < 3; i++)
+            {
+                var idx = i;
+                <img src="data:@Images[idx].ContentType;base64,@Images[idx].Base64"
+                     @onclick="() => OnImageClicked.InvokeAsync(idx)"
+                     class="chat-image-tile" alt="image" />
+            }
+        </div>
+    }
+    else
+    {
+        <div class="chat-grid-4">
+            @for (var i = 0; i < Math.Min(Images.Count, 4); i++)
+            {
+                var idx = i;
+                var isOverflow = idx == 3 && Images.Count > 4;
+                <div class="chat-image-wrapper" @onclick="() => OnImageClicked.InvokeAsync(idx)">
+                    <img src="data:@Images[idx].ContentType;base64,@Images[idx].Base64"
+                         class="chat-image-tile" alt="image" />
+                    @if (isOverflow)
+                    {
+                        <div class="chat-image-overflow">
+                            <span>+@(Images.Count - 4)</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ImageData> Images { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<int> OnImageClicked { get; set; }
+}

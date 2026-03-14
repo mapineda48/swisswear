@@ -18,11 +18,12 @@ public record ChatMessage(
 
 public record ClientInfo(string IpAddress, string? UserAgent);
 
-public class ChatService
+public class ChatService : IChatService
 {
     private readonly ConcurrentQueue<ChatMessage> _messages = new();
     private const int MaxMessages = 200;
-    private readonly ChatAuditService _auditService;
+    private readonly IChatAuditService _auditService;
+    private readonly ILogger<ChatService> _logger;
 
     public event Action<ChatMessage>? OnMessageReceived;
     public event Action<string, string>? OnUserJoined;
@@ -32,9 +33,10 @@ public class ChatService
     private readonly ConcurrentDictionary<string, string> _activeUsers = new();
     private readonly ConcurrentDictionary<string, DateTime> _typingUsers = new();
 
-    public ChatService(ChatAuditService auditService)
+    public ChatService(IChatAuditService auditService, ILogger<ChatService> logger)
     {
         _auditService = auditService;
+        _logger = logger;
     }
 
     public string RegisterUser()
@@ -42,14 +44,14 @@ public class ChatService
         var id = Guid.NewGuid().ToString("N")[..8];
         var name = $"User-{id}";
         _activeUsers[id] = name;
-        OnUserJoined?.Invoke(id, name);
+        RaiseEvent(OnUserJoined, id, name);
         return id;
     }
 
     public void UnregisterUser(string userId)
     {
         _activeUsers.TryRemove(userId, out _);
-        OnUserLeft?.Invoke(userId);
+        RaiseEvent(OnUserLeft, userId);
     }
 
     public string GetUserName(string userId)
@@ -65,7 +67,7 @@ public class ChatService
         else
             _typingUsers.TryRemove(userId, out _);
 
-        OnTypingChanged?.Invoke(userId, GetUserName(userId), isTyping);
+        RaiseEvent(OnTypingChanged, userId, GetUserName(userId), isTyping);
     }
 
     public IReadOnlyList<(string Id, string Name)> GetTypingUsers()
@@ -78,9 +80,7 @@ public class ChatService
     {
         if (string.IsNullOrWhiteSpace(text)) return;
 
-        _typingUsers.TryRemove(userId, out _);
-        OnTypingChanged?.Invoke(userId, GetUserName(userId), false);
-
+        ClearTyping(userId);
         var message = new ChatMessage(userId, GetUserName(userId), text.Trim(), DateTime.UtcNow);
         EnqueueMessage(message, clientInfo);
     }
@@ -89,9 +89,7 @@ public class ChatService
     {
         if (images.Count == 0) return;
 
-        _typingUsers.TryRemove(userId, out _);
-        OnTypingChanged?.Invoke(userId, GetUserName(userId), false);
-
+        ClearTyping(userId);
         var message = new ChatMessage(userId, GetUserName(userId), caption?.Trim() ?? "", DateTime.UtcNow, MessageType.Image, Images: images);
         EnqueueMessage(message, clientInfo);
     }
@@ -100,11 +98,18 @@ public class ChatService
     {
         if (string.IsNullOrEmpty(base64Data)) return;
 
-        _typingUsers.TryRemove(userId, out _);
-        OnTypingChanged?.Invoke(userId, GetUserName(userId), false);
-
+        ClearTyping(userId);
         var message = new ChatMessage(userId, GetUserName(userId), caption?.Trim() ?? "", DateTime.UtcNow, type, base64Data, contentType);
         EnqueueMessage(message, clientInfo);
+    }
+
+    public IReadOnlyList<ChatMessage> GetRecentMessages()
+        => _messages.ToArray();
+
+    private void ClearTyping(string userId)
+    {
+        _typingUsers.TryRemove(userId, out _);
+        RaiseEvent(OnTypingChanged, userId, GetUserName(userId), false);
     }
 
     private void EnqueueMessage(ChatMessage message, ClientInfo? clientInfo)
@@ -114,7 +119,7 @@ public class ChatService
         while (_messages.Count > MaxMessages)
             _messages.TryDequeue(out _);
 
-        OnMessageReceived?.Invoke(message);
+        RaiseEvent(OnMessageReceived, message);
 
         if (clientInfo is not null)
         {
@@ -122,6 +127,24 @@ public class ChatService
         }
     }
 
-    public IReadOnlyList<ChatMessage> GetRecentMessages()
-        => _messages.ToArray();
+    private void RaiseEvent<T>(Action<T>? handler, T arg)
+    {
+        if (handler is null) return;
+        try { handler.Invoke(arg); }
+        catch (Exception ex) { _logger.LogError(ex, "Chat event handler failed"); }
+    }
+
+    private void RaiseEvent<T1, T2>(Action<T1, T2>? handler, T1 arg1, T2 arg2)
+    {
+        if (handler is null) return;
+        try { handler.Invoke(arg1, arg2); }
+        catch (Exception ex) { _logger.LogError(ex, "Chat event handler failed"); }
+    }
+
+    private void RaiseEvent<T1, T2, T3>(Action<T1, T2, T3>? handler, T1 arg1, T2 arg2, T3 arg3)
+    {
+        if (handler is null) return;
+        try { handler.Invoke(arg1, arg2, arg3); }
+        catch (Exception ex) { _logger.LogError(ex, "Chat event handler failed"); }
+    }
 }

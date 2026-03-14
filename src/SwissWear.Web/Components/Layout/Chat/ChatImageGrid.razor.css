@@ -1,0 +1,57 @@
+.chat-image-grid {
+    margin: 2px 0 4px;
+}
+
+.chat-image-single {
+    max-width: 100%;
+    border-radius: 8px;
+    display: block;
+    cursor: pointer;
+}
+
+.chat-grid-2,
+.chat-grid-4 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+}
+
+.chat-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 3px;
+}
+
+.chat-image-tile {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.chat-image-span {
+    grid-column: 1 / -1;
+}
+
+.chat-image-wrapper {
+    position: relative;
+    cursor: pointer;
+}
+
+.chat-image-overflow {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-image-overflow span {
+    color: white;
+    font-size: 1.2rem;
+    font-weight: 600;
+}

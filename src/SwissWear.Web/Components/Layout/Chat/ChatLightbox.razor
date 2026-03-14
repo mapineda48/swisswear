@@ -1,0 +1,57 @@
+@using SwissWear.Web.Services
+
+<div @onclick="OnClose" class="chat-lightbox-overlay">
+    <button type="button" @onclick="OnClose" @onclick:stopPropagation="true" class="chat-lightbox-close">✕</button>
+
+    @if (Images.Count > 1)
+    {
+        <div class="chat-lightbox-counter">@(CurrentIndex + 1) / @Images.Count</div>
+    }
+
+    <div @onclick:stopPropagation="true" class="chat-lightbox-image-container">
+        <img src="data:@Images[CurrentIndex].ContentType;base64,@Images[CurrentIndex].Base64"
+             class="chat-lightbox-image" alt="fullsize" />
+    </div>
+
+    @if (Images.Count > 1)
+    {
+        <button type="button" @onclick="NavigatePrev" @onclick:stopPropagation="true" class="chat-lightbox-nav chat-lightbox-prev">‹</button>
+        <button type="button" @onclick="NavigateNext" @onclick:stopPropagation="true" class="chat-lightbox-nav chat-lightbox-next">›</button>
+
+        <div @onclick:stopPropagation="true" class="chat-lightbox-thumbs">
+            @for (var i = 0; i < Images.Count; i++)
+            {
+                var idx = i;
+                <img src="data:@Images[i].ContentType;base64,@Images[i].Base64"
+                     @onclick="() => OnIndexChanged.InvokeAsync(idx)"
+                     class="chat-lightbox-thumb @(idx == CurrentIndex ? "active" : "")" alt="thumb" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<ImageData> Images { get; set; } = [];
+
+    [Parameter]
+    public int CurrentIndex { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback<int> OnIndexChanged { get; set; }
+
+    private void NavigatePrev()
+    {
+        var newIndex = (CurrentIndex - 1 + Images.Count) % Images.Count;
+        OnIndexChanged.InvokeAsync(newIndex);
+    }
+
+    private void NavigateNext()
+    {
+        var newIndex = (CurrentIndex + 1) % Images.Count;
+        OnIndexChanged.InvokeAsync(newIndex);
+    }
+}

@@ -1,0 +1,48 @@
+@using SwissWear.Web.Services
+
+<div class="@(IsOwn ? "chat-bubble-row own" : "chat-bubble-row")">
+    <div class="chat-bubble @(IsOwn ? "chat-bubble-own" : "chat-bubble-other")">
+        @if (!IsOwn)
+        {
+            <div class="chat-bubble-author">@Message.UserName</div>
+        }
+
+        @if (Message.Type == MessageType.Image)
+        {
+            @if (Message.Images is { Count: > 0 })
+            {
+                <ChatImageGrid Images="Message.Images" OnImageClicked="idx => OnImageClicked.InvokeAsync((Message.Images, idx))" />
+            }
+            else if (Message.MediaData is not null)
+            {
+                var singleImages = new List<ImageData> { new(Message.MediaData, Message.MediaContentType!) };
+                <ChatImageGrid Images="singleImages" OnImageClicked="idx => OnImageClicked.InvokeAsync((singleImages, idx))" />
+            }
+        }
+
+        @if (Message.Type == MessageType.Audio && Message.MediaData is not null)
+        {
+            var playerId = $"ap-{Message.UserId}-{Message.Timestamp.Ticks}";
+            var audioSrc = $"data:{Message.MediaContentType};base64,{Message.MediaData}";
+            <ChatAudioPlayer PlayerId="@playerId" AudioSource="@audioSrc" ContentType="@(Message.MediaContentType!)" IsOwnMessage="IsOwn" />
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Message.Text))
+        {
+            <div class="chat-bubble-text">@Message.Text</div>
+        }
+
+        <div class="chat-bubble-time">@Message.Timestamp.ToLocalTime().ToString("HH:mm")</div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatMessage Message { get; set; } = default!;
+
+    [Parameter]
+    public bool IsOwn { get; set; }
+
+    [Parameter]
+    public EventCallback<(IReadOnlyList<ImageData> Images, int Index)> OnImageClicked { get; set; }
+}

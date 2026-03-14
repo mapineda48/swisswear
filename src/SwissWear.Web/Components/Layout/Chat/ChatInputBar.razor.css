@@ -1,0 +1,26 @@
+.chat-input-bar {
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-top: 1px solid var(--mud-palette-lines-default);
+    background: var(--mud-palette-surface);
+}
+
+.chat-input-field {
+    flex: 1;
+    background: var(--mud-palette-background);
+    border-radius: 20px;
+    padding: 4px 14px;
+    display: flex;
+    align-items: center;
+}
+
+.chat-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--mud-palette-text-primary);
+    font-size: 0.875rem;
+    width: 100%;
+}

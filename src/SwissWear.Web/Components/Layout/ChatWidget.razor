@@ -1,4 +1,5 @@
-@inject ChatService ChatService
+@using SwissWear.Web.Components.Layout.Chat
+@inject IChatService ChatService
 @inject IStringLocalizer<AppStrings> L
 @inject IJSRuntime JS
 @inject IHttpContextAccessor HttpContextAccessor
@@ -6,14 +7,14 @@
 
 @if (_isOpen)
 {
-    <MudPaper Elevation="8" Style="position: fixed; bottom: 90px; right: 24px; width: 380px; height: 520px; z-index: 9999; display: flex; flex-direction: column; border-radius: 16px; overflow: hidden;">
+    <MudPaper Elevation="8" Class="chat-container">
         @* ── Header ── *@
-        <div style="background: linear-gradient(135deg, var(--mud-palette-primary), var(--mud-palette-primary-darken)); padding: 12px 16px; display: flex; align-items: center; gap: 10px;">
+        <div class="chat-header">
             <MudAvatar Size="Size.Small" Style="background: rgba(255,255,255,0.2);">
                 <MudIcon Icon="@Icons.Material.Filled.Forum" Size="Size.Small" Style="color: white;" />
             </MudAvatar>
             <div style="flex: 1;">
-                <MudText Typo="Typo.body1" Style="color: white; font-weight: 600; line-height: 1.2;">Chat</MudText>
+                <MudText Typo="Typo.body1" Style="color: white; font-weight: 600; line-height: 1.2;">@L["Chat_Title"]</MudText>
                 <MudText Typo="Typo.caption" Style="color: rgba(255,255,255,0.7); line-height: 1.2;">
                     @_activeUsers.Count @L["Chat_OnlineUsers"].ToString().ToLower()
                 </MudText>
@@ -22,10 +23,10 @@
         </div>
 
         @* ── Messages ── *@
-        <div id="chat-messages" @ref="_messagesContainer" style="flex: 1; overflow-y: auto; padding: 12px 10px; background: var(--mud-palette-background);">
+        <div id="chat-messages" @ref="_messagesContainer" class="chat-messages">
             @if (_messages.Count == 0)
             {
-                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; opacity: 0.5;">
+                <div class="chat-empty">
                     <MudIcon Icon="@Icons.Material.Outlined.ChatBubbleOutline" Size="Size.Large" Color="Color.Secondary" />
                     <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">@L["Chat_NoMessages"]</MudText>
                 </div>
@@ -34,119 +35,9 @@
             {
                 @foreach (var msg in _messages)
                 {
-                    var isOwn = msg.UserId == _userId;
-                    <div style="display: flex; justify-content: @(isOwn ? "flex-end" : "flex-start"); margin-bottom: 6px;">
-                        <div style="max-width: 78%; padding: 8px 12px; border-radius: @(isOwn ? "16px 4px 16px 16px" : "4px 16px 16px 16px"); background: @(isOwn ? "var(--mud-palette-primary)" : "var(--mud-palette-surface)"); color: @(isOwn ? "white" : "inherit"); overflow: hidden;">
-                            @if (!isOwn)
-                            {
-                                <div style="font-size: 0.7rem; font-weight: 600; color: var(--mud-palette-primary); margin-bottom: 2px;">@msg.UserName</div>
-                            }
-
-                            @* ── Images (multi or single) ── *@
-                            @if (msg.Type == MessageType.Image)
-                            {
-                                @if (msg.Images is { Count: > 0 })
-                                {
-                                    var images = msg.Images;
-                                    var count = images.Count;
-                                    @if (count == 1)
-                                    {
-                                        <img src="data:@images[0].ContentType;base64,@images[0].Base64"
-                                             @onclick="() => OpenLightbox(images, 0)"
-                                             style="max-width: 100%; border-radius: 8px; display: block; margin: 2px 0 4px; cursor: pointer;" alt="image" />
-                                    }
-                                    else if (count == 2)
-                                    {
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 2px 0 4px;">
-                                            @for (var i = 0; i < 2; i++)
-                                            {
-                                                var idx = i;
-                                                <img src="data:@images[idx].ContentType;base64,@images[idx].Base64"
-                                                     @onclick="() => OpenLightbox(images, idx)"
-                                                     style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; cursor: pointer;" alt="image" />
-                                            }
-                                        </div>
-                                    }
-                                    else if (count == 3)
-                                    {
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 3px; margin: 2px 0 4px;">
-                                            <img src="data:@images[0].ContentType;base64,@images[0].Base64"
-                                                 @onclick="() => OpenLightbox(images, 0)"
-                                                 style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; grid-column: 1 / -1; cursor: pointer;" alt="image" />
-                                            @for (var i = 1; i < 3; i++)
-                                            {
-                                                var idx = i;
-                                                <img src="data:@images[idx].ContentType;base64,@images[idx].Base64"
-                                                     @onclick="() => OpenLightbox(images, idx)"
-                                                     style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; cursor: pointer;" alt="image" />
-                                            }
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 2px 0 4px;">
-                                            @for (var i = 0; i < Math.Min(count, 4); i++)
-                                            {
-                                                var idx = i;
-                                                var isLast = idx == 3 && count > 4;
-                                                <div style="position: relative; cursor: pointer;" @onclick="() => OpenLightbox(images, idx)">
-                                                    <img src="data:@images[idx].ContentType;base64,@images[idx].Base64"
-                                                         style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px;" alt="image" />
-                                                    @if (isLast)
-                                                    {
-                                                        <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); border-radius: 6px; display: flex; align-items: center; justify-content: center;">
-                                                            <span style="color: white; font-size: 1.2rem; font-weight: 600;">+@(count - 4)</span>
-                                                        </div>
-                                                    }
-                                                </div>
-                                            }
-                                        </div>
-                                    }
-                                }
-                                else if (msg.MediaData is not null)
-                                {
-                                    var singleImages = new List<ImageData> { new(msg.MediaData, msg.MediaContentType!) };
-                                    <img src="data:@msg.MediaContentType;base64,@msg.MediaData"
-                                         @onclick="() => OpenLightbox(singleImages, 0)"
-                                         style="max-width: 100%; border-radius: 8px; display: block; margin: 2px 0 4px; cursor: pointer;" alt="image" />
-                                }
-                            }
-
-                            @if (msg.Type == MessageType.Audio && msg.MediaData is not null)
-                            {
-                                var playerId = $"ap-{msg.UserId}-{msg.Timestamp.Ticks}";
-                                var audioSrc = $"data:{msg.MediaContentType};base64,{msg.MediaData}";
-                                <div id="@playerId" class="chat-audio-player" style="display: flex; align-items: center; gap: 8px; min-width: 180px; margin: 4px 0;">
-                                    <button class="ap-btn" type="button"
-                                            onclick="chatAudio.togglePlay('@playerId')"
-                                            style="width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: @(isOwn ? "rgba(255,255,255,0.2)" : "var(--mud-palette-primary)"); color: white;">
-                                        ▶
-                                    </button>
-                                    <div style="flex: 1; display: flex; flex-direction: column; gap: 2px;">
-                                        <div class="ap-bar" onclick="chatAudio.seekPlayer('@playerId', event)"
-                                             style="height: 6px; background: @(isOwn ? "rgba(255,255,255,0.3)" : "var(--mud-palette-lines-default)"); border-radius: 3px; cursor: pointer; overflow: hidden;">
-                                            <div class="ap-progress-fill"
-                                                 style="height: 100%; width: 0%; background: @(isOwn ? "white" : "var(--mud-palette-primary)"); border-radius: 3px; transition: width 0.1s linear;"></div>
-                                        </div>
-                                        <div style="display: flex; justify-content: space-between; font-size: 0.6rem; opacity: 0.7;">
-                                            <span class="ap-current">0:00</span>
-                                            <span class="ap-duration">0:00</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <audio preload="metadata" style="display:none;" id="@(playerId)-audio">
-                                    <source src="@audioSrc" type="@msg.MediaContentType" />
-                                </audio>
-                            }
-
-                            @if (!string.IsNullOrWhiteSpace(msg.Text))
-                            {
-                                <div style="font-size: 0.875rem; line-height: 1.4; word-break: break-word;">@msg.Text</div>
-                            }
-
-                            <div style="font-size: 0.65rem; opacity: 0.6; text-align: right; margin-top: 2px;">@msg.Timestamp.ToLocalTime().ToString("HH:mm")</div>
-                        </div>
-                    </div>
+                    <ChatMessageBubble Message="msg"
+                                       IsOwn="msg.UserId == _userId"
+                                       OnImageClicked="args => OpenLightbox(args.Images, args.Index)" />
                 }
             }
         </div>
@@ -154,40 +45,33 @@
         @* ── Typing indicator ── *@
         @if (_typingNames.Count > 0)
         {
-            <div style="padding: 2px 16px 4px; background: var(--mud-palette-background);">
-                <span style="font-size: 0.75rem; color: var(--mud-palette-text-secondary); font-style: italic;">@GetTypingText()</span>
+            <div class="chat-typing">
+                <span>@GetTypingText()</span>
             </div>
         }
 
         @* ── Image previews ── *@
         @if (_pendingImages.Count > 0)
         {
-            <div style="padding: 8px 12px; background: var(--mud-palette-surface); border-top: 1px solid var(--mud-palette-lines-default); display: flex; gap: 6px; overflow-x: auto;">
+            <div class="chat-previews">
                 @for (var i = 0; i < _pendingImages.Count; i++)
                 {
                     var idx = i;
                     var img = _pendingImages[i];
-                    <div style="position: relative; flex-shrink: 0;">
-                        <img src="data:@img.ContentType;base64,@img.Base64"
-                             style="width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 2px solid var(--mud-palette-lines-default);" alt="preview" />
-                        <button type="button" @onclick="() => RemovePendingImage(idx)"
-                                style="position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; border: none; background: var(--mud-palette-error); color: white; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;">
-                            ✕
-                        </button>
+                    <div class="chat-preview-item">
+                        <img src="data:@img.ContentType;base64,@img.Base64" class="chat-preview-img" alt="preview" />
+                        <button type="button" @onclick="() => RemovePendingImage(idx)" class="chat-preview-remove">✕</button>
                     </div>
                 }
-                <button type="button" @onclick="TriggerFileInput"
-                        style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 8px; border: 2px dashed var(--mud-palette-lines-default); background: transparent; color: var(--mud-palette-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 1.2rem;">
-                    +
-                </button>
+                <button type="button" @onclick="TriggerFileInput" class="chat-preview-add">+</button>
             </div>
         }
 
         @* ── Recording indicator ── *@
         @if (_isRecording)
         {
-            <div style="padding: 8px 16px; background: var(--mud-palette-surface); border-top: 1px solid var(--mud-palette-lines-default); display: flex; align-items: center; gap: 8px;">
-                <MudIcon Icon="@Icons.Material.Filled.FiberManualRecord" Color="Color.Error" Size="Size.Small" Style="animation: blink 1s infinite;" />
+            <div class="chat-recording">
+                <MudIcon Icon="@Icons.Material.Filled.FiberManualRecord" Color="Color.Error" Size="Size.Small" Class="chat-recording-icon" />
                 <MudText Typo="Typo.caption" Color="Color.Error">@L["Chat_Recording"]</MudText>
                 <MudSpacer />
                 <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small" OnClick="CancelRecording">@L["Common_Cancel"]</MudButton>
@@ -198,104 +82,32 @@
         @* ── Input bar ── *@
         @if (!_isRecording)
         {
-            <div style="padding: 8px 8px; display: flex; align-items: center; gap: 4px; border-top: 1px solid var(--mud-palette-lines-default); background: var(--mud-palette-surface);">
-                @* Attach (hidden input + icon) *@
-                <InputFile @ref="_fileInput" OnChange="OnImagesSelected" accept="image/*" multiple style="display: none;" id="chat-file-input" />
-                <MudIconButton Icon="@Icons.Material.Filled.AttachFile"
-                               Size="Size.Small"
-                               Style="color: var(--mud-palette-text-secondary);"
-                               OnClick="TriggerFileInput" />
-
-                @* Text input *@
-                <div style="flex: 1; background: var(--mud-palette-background); border-radius: 20px; padding: 4px 14px; display: flex; align-items: center;">
-                    <input @bind="_messageInput"
-                           @bind:event="oninput"
-                           @onkeyup="OnKeyUp"
-                           placeholder="@L["Chat_MessagePlaceholder"]"
-                           style="border: none; outline: none; background: transparent; color: var(--mud-palette-text-primary); font-size: 0.875rem; width: 100%;" />
-                </div>
-
-                @* Mic or Send *@
-                @if (string.IsNullOrWhiteSpace(_messageInput) && _pendingImages.Count == 0)
-                {
-                    <MudIconButton Icon="@Icons.Material.Filled.Mic"
-                                   Size="Size.Small"
-                                   Style="color: var(--mud-palette-text-secondary);"
-                                   OnClick="StartRecording" />
-                }
-                else
-                {
-                    <MudIconButton Icon="@Icons.Material.Filled.Send"
-                                   Size="Size.Small"
-                                   Color="Color.Primary"
-                                   OnClick="Send" />
-                }
-            </div>
+            <ChatInputBar @bind-CurrentText="_messageInput"
+                           HasPendingImages="_pendingImages.Count > 0"
+                           OnSend="Send"
+                           OnMicClicked="StartRecording"
+                           OnAttachClicked="TriggerFileInput"
+                           OnTextChanged="OnTextChanged"
+                           OnFilesSelected="OnImagesSelected" />
         }
     </MudPaper>
 }
 
-@* ── Image Lightbox / Carousel ── *@
+@* ── Image Lightbox ── *@
 @if (_lightboxImages is not null)
 {
-    <div @onclick="CloseLightbox" style="position: fixed; inset: 0; z-index: 20000; background: rgba(0,0,0,0.92); display: flex; flex-direction: column; align-items: center; justify-content: center;">
-        @* Close button *@
-        <button type="button" @onclick="CloseLightbox" @onclick:stopPropagation="true"
-                style="position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.15); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 1;">
-            ✕
-        </button>
-
-        @* Counter *@
-        @if (_lightboxImages.Count > 1)
-        {
-            <div style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.8); font-size: 0.9rem; font-weight: 500;">
-                @(_lightboxIndex + 1) / @_lightboxImages.Count
-            </div>
-        }
-
-        @* Image *@
-        <div @onclick:stopPropagation="true" style="max-width: 90vw; max-height: 80vh; display: flex; align-items: center; justify-content: center;">
-            <img src="data:@_lightboxImages[_lightboxIndex].ContentType;base64,@_lightboxImages[_lightboxIndex].Base64"
-                 style="max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);" alt="fullsize" />
-        </div>
-
-        @* Navigation arrows *@
-        @if (_lightboxImages.Count > 1)
-        {
-            <button type="button" @onclick="LightboxPrev" @onclick:stopPropagation="true"
-                    style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.15); border: none; color: white; width: 44px; height: 44px; border-radius: 50%; font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
-                ‹
-            </button>
-            <button type="button" @onclick="LightboxNext" @onclick:stopPropagation="true"
-                    style="position: absolute; right: 16px; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.15); border: none; color: white; width: 44px; height: 44px; border-radius: 50%; font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
-                ›
-            </button>
-
-            @* Thumbnail strip *@
-            <div @onclick:stopPropagation="true" style="position: absolute; bottom: 16px; display: flex; gap: 6px; padding: 8px 12px; background: rgba(0,0,0,0.4); border-radius: 12px; backdrop-filter: blur(8px);">
-                @for (var i = 0; i < _lightboxImages.Count; i++)
-                {
-                    var idx = i;
-                    var img = _lightboxImages[i];
-                    <img src="data:@img.ContentType;base64,@img.Base64"
-                         @onclick="() => _lightboxIndex = idx"
-                         style="width: 48px; height: 48px; object-fit: cover; border-radius: 6px; cursor: pointer; opacity: @(idx == _lightboxIndex ? "1" : "0.5"); border: 2px solid @(idx == _lightboxIndex ? "white" : "transparent"); transition: all 0.2s;" alt="thumb" />
-                }
-            </div>
-        }
-    </div>
+    <ChatLightbox Images="_lightboxImages"
+                  CurrentIndex="_lightboxIndex"
+                  OnClose="CloseLightbox"
+                  OnIndexChanged="idx => { _lightboxIndex = idx; StateHasChanged(); }" />
 }
 
 @* ── FAB ── *@
 <MudFab StartIcon="@(_isOpen ? Icons.Material.Filled.ChatBubble : Icons.Material.Filled.Chat)"
         Color="Color.Primary"
-        Style="position: fixed; bottom: 24px; right: 24px; z-index: 10000;"
+        Class="chat-fab"
         OnClick="Toggle"
         Size="Size.Large" />
-
-<style>
-    @@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-</style>
 
 @code {
     private bool _isOpen;
@@ -312,17 +124,11 @@
     private bool _cancelRecording;
     private DotNetObjectReference<ChatWidget>? _dotNetRef;
     private readonly System.Text.StringBuilder _audioChunks = new();
+    private IJSObjectReference? _jsModule;
 
-    private InputFile? _fileInput;
-
-    // Pending images (multiple)
     private List<ImageData> _pendingImages = new();
-
-    // Lightbox state
     private IReadOnlyList<ImageData>? _lightboxImages;
     private int _lightboxIndex;
-
-    // Client info for audit
     private ClientInfo? _clientInfo;
 
     protected override void OnInitialized()
@@ -332,7 +138,6 @@
         _activeUsers = ChatService.GetActiveUsers().ToList();
         _dotNetRef = DotNetObjectReference.Create(this);
 
-        // Capture client info from the initial HTTP request
         var httpContext = HttpContextAccessor.HttpContext;
         if (httpContext is not null)
         {
@@ -349,26 +154,17 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_isOpen)
+        if (!_isOpen) return;
+
+        _jsModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js");
+
+        await _jsModule.InvokeVoidAsync("initAudioPlayers");
+        await _jsModule.InvokeVoidAsync("ensureFileInputMultiple");
+
+        if (_shouldScrollToBottom)
         {
-            await JS.InvokeVoidAsync("eval", @"
-                document.querySelectorAll('.chat-audio-player').forEach(function(el) {
-                    if (el.dataset.init) return;
-                    el.dataset.init = '1';
-                    var id = el.id;
-                    var audioEl = document.getElementById(id + '-audio');
-                    if (audioEl) chatAudio.initPlayer(id, audioEl.querySelector('source').src);
-                });
-                var fi = document.getElementById('chat-file-input');
-                if (fi && !fi.hasAttribute('multiple')) fi.setAttribute('multiple', '');
-            ");
-
-
-            if (_shouldScrollToBottom)
-            {
-                _shouldScrollToBottom = false;
-                await JS.InvokeVoidAsync("eval", "document.getElementById('chat-messages')?.scrollTo({top: document.getElementById('chat-messages').scrollHeight, behavior: 'smooth'})");
-            }
+            _shouldScrollToBottom = false;
+            await _jsModule.InvokeVoidAsync("scrollToBottom", "chat-messages");
         }
     }
 
@@ -461,18 +257,11 @@
         _messageInput = "";
     }
 
-    private void OnKeyUp(KeyboardEventArgs e)
-    {
-        OnTextChanged(_messageInput);
-
-        if (e.Key == "Enter")
-            Send();
-    }
-
     // ── Images ──
     private async Task TriggerFileInput()
     {
-        await JS.InvokeVoidAsync("eval", "document.getElementById('chat-file-input')?.click()");
+        _jsModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js");
+        await _jsModule.InvokeVoidAsync("triggerFileInput", "chat-file-input");
     }
 
     private async Task OnImagesSelected(InputFileChangeEventArgs e)
@@ -503,18 +292,6 @@
     private void CloseLightbox()
     {
         _lightboxImages = null;
-    }
-
-    private void LightboxPrev()
-    {
-        if (_lightboxImages is null) return;
-        _lightboxIndex = (_lightboxIndex - 1 + _lightboxImages.Count) % _lightboxImages.Count;
-    }
-
-    private void LightboxNext()
-    {
-        if (_lightboxImages is null) return;
-        _lightboxIndex = (_lightboxIndex + 1) % _lightboxImages.Count;
     }
 
     // ── Audio ──
@@ -571,8 +348,31 @@
     public async ValueTask DisposeAsync()
     {
         _typingTimer?.Dispose();
+
+        // Clean up audio players in JS
+        if (_jsModule is not null)
+        {
+            var playerIds = _messages
+                .Where(m => m.Type == MessageType.Audio && m.MediaData is not null)
+                .Select(m => $"ap-{m.UserId}-{m.Timestamp.Ticks}")
+                .ToArray();
+
+            if (playerIds.Length > 0)
+            {
+                try { await _jsModule.InvokeVoidAsync("destroyAudioPlayers", (object)playerIds); }
+                catch (JSDisconnectedException) { }
+            }
+
+            try { await _jsModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+
         if (_isRecording)
-            await JS.InvokeVoidAsync("chatAudio.stop");
+        {
+            try { await JS.InvokeVoidAsync("chatAudio.stop"); }
+            catch (JSDisconnectedException) { }
+        }
+
         _dotNetRef?.Dispose();
         ChatService.OnMessageReceived -= HandleMessage;
         ChatService.OnUserJoined -= HandleUserJoined;

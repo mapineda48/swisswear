@@ -28,8 +28,8 @@ builder.Services.AddHttpContextAccessor();
 
 // Application services
 builder.Services.AddScoped<PersonService>();
-builder.Services.AddSingleton<ChatAuditService>();
-builder.Services.AddSingleton<ChatService>();
+builder.Services.AddSingleton<IChatAuditService, ChatAuditService>();
+builder.Services.AddSingleton<IChatService, ChatService>();
 
 var app = builder.Build();
 
