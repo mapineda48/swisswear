@@ -9,6 +9,7 @@ public class AppDbContext : DbContext
     }
 
     public DbSet<Person> People => Set<Person>();
+    public DbSet<ChatMessageLog> ChatMessageLogs => Set<ChatMessageLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -23,8 +23,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Storage
 builder.Services.AddSingleton<IStorageService, AzureBlobStorageService>();
 
+// HTTP context for capturing client info (IP, UserAgent)
+builder.Services.AddHttpContextAccessor();
+
 // Application services
 builder.Services.AddScoped<PersonService>();
+builder.Services.AddSingleton<ChatAuditService>();
+builder.Services.AddSingleton<ChatService>();
 
 var app = builder.Build();
 
