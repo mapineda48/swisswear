@@ -1,0 +1,23 @@
+/* Chat widget global styles — needed because MudBlazor components
+   (MudFab, MudPaper) don't inherit Blazor's CSS isolation scope attribute,
+   so scoped ::deep selectors can't reach them reliably. */
+
+.chat-fab {
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    z-index: 10000 !important;
+}
+
+.chat-container {
+    position: fixed !important;
+    bottom: 90px !important;
+    right: 24px !important;
+    width: 380px !important;
+    height: 520px !important;
+    z-index: 9999 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+}
