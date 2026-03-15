@@ -10,6 +10,7 @@ This is a personal project to experiment with architecture patterns, UI componen
 - **MudBlazor 9** — Material Design component library
 - **PostgreSQL 17** — Relational database via Entity Framework Core 10
 - **Azure Blob Storage** — File storage (Azurite emulator for local development)
+- **Valkey 8** — Distributed cache and Pub/Sub (Redis-compatible alternative)
 - **Docker Compose** — Local development infrastructure
 
 ## Prerequisites
@@ -21,7 +22,7 @@ This is a personal project to experiment with architecture patterns, UI componen
 ## Getting Started
 
 ```bash
-# Start infrastructure (PostgreSQL + Azurite)
+# Start infrastructure (PostgreSQL + Azurite + Valkey)
 docker compose up -d
 
 # Apply database migrations
@@ -38,12 +39,12 @@ The app will be available at `http://localhost:5201`.
 ```
 .
 ├── src/SwissWear.Web/          # Blazor Server application
-│   ├── Components/             # Razor components (pages, layout)
+│   ├── Components/             # Razor components (pages, layout, chat)
 │   ├── Data/                   # EF Core DbContext and entities
-│   ├── Services/               # Business logic and storage services
+│   ├── Services/               # Business logic, storage, cache, pub/sub
 │   └── Resources/              # Localization (.resx files)
-├── tests/SwissWear.Tests/      # Unit tests (xUnit + bUnit)
-├── docker-compose.yml          # PostgreSQL + Azurite for local dev
+├── tests/SwissWear.Tests/      # Unit tests (xUnit + bUnit + Moq)
+├── docker-compose.yml          # PostgreSQL + Azurite + Valkey for local dev
 ├── Dockerfile                  # Multi-stage build for production
 └── .github/workflows/          # CI/CD pipelines
 ```
@@ -53,6 +54,13 @@ The app will be available at `http://localhost:5201`.
 | Module | Description |
 |--------|-------------|
 | **People** | Full CRUD with photo upload to Azure Blob Storage |
+| **Chat** | Real-time messaging with text, images, and audio. Distributed via Valkey Pub/Sub for multi-pod deployments |
+
+## Architecture Highlights
+
+- **Stateless design** — All shared state is externalized to PostgreSQL, Azure Blob Storage, and Valkey, making the app ready for horizontal scaling in Kubernetes (AKS)
+- **Service abstractions** — `ICacheService`, `IPubSubService`, and `IStorageService` decouple business logic from infrastructure
+- **Chat system** — Uses Valkey for distributed message storage (List), user presence (Hash), typing indicators (Key with TTL), and cross-pod event propagation (Pub/Sub)
 
 ## Localization
 
@@ -73,6 +81,7 @@ docker run -d -p 8080:8080 \
   --network swisswear_default \
   -e "ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=swisswear_dev;Username=postgres;Password=postgres" \
   -e "AzureStorage__ConnectionString=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1" \
+  -e "Valkey__ConnectionString=valkey:6379" \
   swisswear
 ```
 

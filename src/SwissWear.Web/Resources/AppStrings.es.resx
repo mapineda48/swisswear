@@ -35,6 +35,7 @@
   <data name="Home_Tech_Postgres" xml:space="preserve"><value>PostgreSQL 17 — Base de datos relacional</value></data>
   <data name="Home_Tech_Azure" xml:space="preserve"><value>Azure Blob Storage — Almacenamiento de archivos (Azurite en desarrollo)</value></data>
   <data name="Home_Tech_EF" xml:space="preserve"><value>Entity Framework Core 10 — ORM con migraciones</value></data>
+  <data name="Home_Tech_Valkey" xml:space="preserve"><value>Valkey 8 — Caché distribuido y Pub/Sub (alternativa a Redis)</value></data>
   <data name="Home_Tech_Docker" xml:space="preserve"><value>Docker Compose — Infraestructura local de desarrollo</value></data>
   <data name="Home_Modules" xml:space="preserve"><value>Módulos disponibles</value></data>
   <data name="Home_Module_People" xml:space="preserve"><value>Personas — CRUD con carga de fotos</value></data>
