@@ -16,5 +16,6 @@
     </PackageReference>
     <PackageReference Include="MudBlazor" Version="9.*" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+    <PackageReference Include="StackExchange.Redis" Version="2.12.1" />
   </ItemGroup>
 </Project>

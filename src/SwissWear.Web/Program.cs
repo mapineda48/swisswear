@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
+using StackExchange.Redis;
 using SwissWear.Web.Components;
 using SwissWear.Web.Data;
 using SwissWear.Web.Services;
@@ -22,6 +23,12 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Storage
 builder.Services.AddSingleton<IStorageService, AzureBlobStorageService>();
+
+// Cache
+builder.Services.AddSingleton<IConnectionMultiplexer>(
+    ConnectionMultiplexer.Connect(builder.Configuration["Valkey:ConnectionString"]
+        ?? throw new InvalidOperationException("Valkey:ConnectionString is not configured.")));
+builder.Services.AddSingleton<ICacheService, ValkeyCacheService>();
 
 // HTTP context for capturing client info (IP, UserAgent)
 builder.Services.AddHttpContextAccessor();
