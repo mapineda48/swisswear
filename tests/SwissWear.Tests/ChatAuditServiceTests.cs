@@ -3,8 +3,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Moq;
-using SwissWear.Web.Data;
-using SwissWear.Web.Services;
+using SwissWear.Domain.Entities;
+using SwissWear.Infrastructure.Data;
+using SwissWear.Domain.Contracts;
+using SwissWear.Infrastructure.Services;
 
 namespace SwissWear.Tests;
 

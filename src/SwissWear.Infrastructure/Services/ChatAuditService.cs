@@ -1,9 +1,14 @@
 using System.Text.Json;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
-using SwissWear.Web.Data;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using SwissWear.Domain.Contracts;
+using SwissWear.Domain.Entities;
+using SwissWear.Infrastructure.Data;
 
-namespace SwissWear.Web.Services;
+namespace SwissWear.Infrastructure.Services;
 
 public class ChatAuditService : IChatAuditService
 {

@@ -1,6 +1,7 @@
 using StackExchange.Redis;
+using SwissWear.Domain.Contracts;
 
-namespace SwissWear.Web.Services;
+namespace SwissWear.Infrastructure.Services;
 
 public class ValkeyPubSubService : IPubSubService
 {

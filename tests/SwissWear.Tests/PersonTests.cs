@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
-using SwissWear.Web.Data;
+using SwissWear.Domain.Entities;
+using SwissWear.Infrastructure.Data;
 
 namespace SwissWear.Tests;
 

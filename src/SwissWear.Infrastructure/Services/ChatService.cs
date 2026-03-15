@@ -1,22 +1,8 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using SwissWear.Domain.Contracts;
 
-namespace SwissWear.Web.Services;
-
-public enum MessageType { Text, Image, Audio }
-
-public record ImageData(string Base64, string ContentType);
-
-public record ChatMessage(
-    string UserId,
-    string UserName,
-    string Text,
-    DateTime Timestamp,
-    MessageType Type = MessageType.Text,
-    string? MediaData = null,
-    string? MediaContentType = null,
-    IReadOnlyList<ImageData>? Images = null);
-
-public record ClientInfo(string IpAddress, string? UserAgent);
+namespace SwissWear.Infrastructure.Services;
 
 public class ChatService : IChatService, IDisposable
 {

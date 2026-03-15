@@ -1,4 +1,4 @@
-namespace SwissWear.Web.Services;
+namespace SwissWear.Domain.Contracts;
 
 public interface IChatService
 {

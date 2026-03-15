@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using SwissWear.Domain.Entities;
 
-namespace SwissWear.Web.Data;
+namespace SwissWear.Infrastructure.Data;
 
 public class AppDbContext : DbContext
 {

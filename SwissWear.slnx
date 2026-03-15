@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/SwissWear.Domain/SwissWear.Domain.csproj" />
+    <Project Path="src/SwissWear.Infrastructure/SwissWear.Infrastructure.csproj" />
     <Project Path="src/SwissWear.Web/SwissWear.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">

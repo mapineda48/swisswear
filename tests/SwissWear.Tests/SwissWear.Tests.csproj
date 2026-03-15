@@ -24,7 +24,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\SwissWear.Web\SwissWear.Web.csproj" />
+    <ProjectReference Include="..\..\src\SwissWear.Domain\SwissWear.Domain.csproj" />
+    <ProjectReference Include="..\..\src\SwissWear.Infrastructure\SwissWear.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,7 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Moq;
-using SwissWear.Web.Services;
+using SwissWear.Domain.Contracts;
+using SwissWear.Infrastructure.Services;
 
 namespace SwissWear.Tests;
 

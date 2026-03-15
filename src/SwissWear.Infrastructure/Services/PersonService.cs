@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
-using SwissWear.Web.Data;
+using SwissWear.Domain.Contracts;
+using SwissWear.Domain.Entities;
+using SwissWear.Infrastructure.Data;
 
-namespace SwissWear.Web.Services;
+namespace SwissWear.Infrastructure.Services;
 
 public class PersonService
 {

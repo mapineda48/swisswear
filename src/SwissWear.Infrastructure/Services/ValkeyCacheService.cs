@@ -1,7 +1,8 @@
 using System.Text.Json;
 using StackExchange.Redis;
+using SwissWear.Domain.Contracts;
 
-namespace SwissWear.Web.Services;
+namespace SwissWear.Infrastructure.Services;
 
 public class ValkeyCacheService : ICacheService
 {
@@ -11,8 +12,6 @@ public class ValkeyCacheService : ICacheService
     {
         _database = connection.GetDatabase();
     }
-
-    // --- Key-value ---
 
     public async Task SetAsync<T>(string key, T value, TimeSpan? expiration = null, CancellationToken cancellationToken = default)
     {
@@ -27,10 +26,7 @@ public class ValkeyCacheService : ICacheService
     public async Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         var value = await _database.StringGetAsync(key);
-
-        if (value.IsNullOrEmpty)
-            return default;
-
+        if (value.IsNullOrEmpty) return default;
         return JsonSerializer.Deserialize<T>(value.ToString());
     }
 
@@ -43,8 +39,6 @@ public class ValkeyCacheService : ICacheService
     {
         return await _database.KeyExistsAsync(key);
     }
-
-    // --- Hash ---
 
     public async Task HashSetAsync(string key, string field, string value, CancellationToken cancellationToken = default)
     {
@@ -67,8 +61,6 @@ public class ValkeyCacheService : ICacheService
     {
         await _database.HashDeleteAsync(key, field);
     }
-
-    // --- List ---
 
     public async Task ListPushAsync(string key, string value, CancellationToken cancellationToken = default)
     {

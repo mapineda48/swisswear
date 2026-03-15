@@ -1,7 +1,9 @@
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Microsoft.Extensions.Configuration;
+using SwissWear.Domain.Contracts;
 
-namespace SwissWear.Web.Services;
+namespace SwissWear.Infrastructure.Services;
 
 public class AzureBlobStorageService : IStorageService
 {

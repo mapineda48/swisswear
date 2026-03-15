@@ -1,6 +1,7 @@
 using Moq;
 using StackExchange.Redis;
-using SwissWear.Web.Services;
+using SwissWear.Domain.Contracts;
+using SwissWear.Infrastructure.Services;
 
 namespace SwissWear.Tests;
 

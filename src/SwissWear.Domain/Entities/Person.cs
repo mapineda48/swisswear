@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace SwissWear.Web.Data;
+namespace SwissWear.Domain.Entities;
 
 public class Person
 {

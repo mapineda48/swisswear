@@ -4,7 +4,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace SwissWear.Web.Migrations
+namespace SwissWear.Infrastructure.Migrations
 {
     /// <inheritdoc />
     public partial class AddChatMessageLog : Migration
