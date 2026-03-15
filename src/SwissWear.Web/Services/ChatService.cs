@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace SwissWear.Web.Services;
 
@@ -18,10 +18,20 @@ public record ChatMessage(
 
 public record ClientInfo(string IpAddress, string? UserAgent);
 
-public class ChatService : IChatService
+public class ChatService : IChatService, IDisposable
 {
-    private readonly ConcurrentQueue<ChatMessage> _messages = new();
     private const int MaxMessages = 200;
+    private const string MessagesKey = "chat:messages";
+    private const string UsersKey = "chat:users";
+    private const string TypingKeyPrefix = "chat:typing:";
+    private const string ChannelMessage = "chat:events:message";
+    private const string ChannelUserJoined = "chat:events:user_joined";
+    private const string ChannelUserLeft = "chat:events:user_left";
+    private const string ChannelTyping = "chat:events:typing";
+
+    private static readonly TimeSpan TypingExpiry = TimeSpan.FromSeconds(5);
+
+    private readonly ICacheService _cache;
     private readonly IChatAuditService _auditService;
     private readonly ILogger<ChatService> _logger;
 
@@ -30,101 +40,166 @@ public class ChatService : IChatService
     public event Action<string>? OnUserLeft;
     public event Action<string, string, bool>? OnTypingChanged;
 
-    private readonly ConcurrentDictionary<string, string> _activeUsers = new();
-    private readonly ConcurrentDictionary<string, DateTime> _typingUsers = new();
-
-    public ChatService(IChatAuditService auditService, ILogger<ChatService> logger)
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    public ChatService(ICacheService cache, IChatAuditService auditService, ILogger<ChatService> logger)
+    {
+        _cache = cache;
         _auditService = auditService;
         _logger = logger;
+
+        SubscribeToChannels();
     }
 
-    public string RegisterUser()
+    private void SubscribeToChannels()
+    {
+        _cache.Subscribe(ChannelMessage, value =>
+        {
+            var msg = Deserialize<ChatMessage>(value);
+            if (msg is not null) RaiseEvent(OnMessageReceived, msg);
+        });
+
+        _cache.Subscribe(ChannelUserJoined, value =>
+        {
+            var data = Deserialize<UserEvent>(value);
+            if (data is not null) RaiseEvent(OnUserJoined, data.UserId, data.UserName);
+        });
+
+        _cache.Subscribe(ChannelUserLeft, value =>
+        {
+            RaiseEvent(OnUserLeft, value);
+        });
+
+        _cache.Subscribe(ChannelTyping, value =>
+        {
+            var data = Deserialize<TypingEvent>(value);
+            if (data is not null) RaiseEvent(OnTypingChanged, data.UserId, data.UserName, data.IsTyping);
+        });
+    }
+
+    public async Task<string> RegisterUserAsync()
     {
         var id = Guid.NewGuid().ToString("N")[..8];
         var name = $"User-{id}";
-        _activeUsers[id] = name;
-        RaiseEvent(OnUserJoined, id, name);
+        await _cache.HashSetAsync(UsersKey, id, name);
+        await _cache.PublishAsync(ChannelUserJoined, Serialize(new UserEvent(id, name)));
         return id;
     }
 
-    public void UnregisterUser(string userId)
+    public async Task UnregisterUserAsync(string userId)
     {
-        _activeUsers.TryRemove(userId, out _);
-        RaiseEvent(OnUserLeft, userId);
+        await _cache.HashRemoveAsync(UsersKey, userId);
+        await _cache.RemoveAsync(TypingKeyPrefix + userId);
+        await _cache.PublishAsync(ChannelUserLeft, userId);
     }
 
-    public string GetUserName(string userId)
-        => _activeUsers.TryGetValue(userId, out var name) ? name : "Unknown";
-
-    public IReadOnlyList<(string Id, string Name)> GetActiveUsers()
-        => _activeUsers.Select(kv => (kv.Key, kv.Value)).ToList();
-
-    public void SetTyping(string userId, bool isTyping)
+    public async Task<string> GetUserNameAsync(string userId)
     {
+        var name = await _cache.HashGetAsync(UsersKey, userId);
+        return name ?? "Unknown";
+    }
+
+    public async Task<IReadOnlyList<(string Id, string Name)>> GetActiveUsersAsync()
+    {
+        var entries = await _cache.HashGetAllAsync(UsersKey);
+        return entries.Select(e => (e.Key, e.Value)).ToList();
+    }
+
+    public async Task SetTypingAsync(string userId, bool isTyping)
+    {
+        var key = TypingKeyPrefix + userId;
+
         if (isTyping)
-            _typingUsers[userId] = DateTime.UtcNow;
+            await _cache.SetAsync(key, "1", TypingExpiry);
         else
-            _typingUsers.TryRemove(userId, out _);
+            await _cache.RemoveAsync(key);
 
-        RaiseEvent(OnTypingChanged, userId, GetUserName(userId), isTyping);
+        var userName = await GetUserNameAsync(userId);
+        await _cache.PublishAsync(ChannelTyping, Serialize(new TypingEvent(userId, userName, isTyping)));
     }
 
-    public IReadOnlyList<(string Id, string Name)> GetTypingUsers()
-        => _typingUsers
-            .Where(kv => (DateTime.UtcNow - kv.Value).TotalSeconds < 5)
-            .Select(kv => (kv.Key, GetUserName(kv.Key)))
-            .ToList();
+    public async Task<IReadOnlyList<(string Id, string Name)>> GetTypingUsersAsync()
+    {
+        var users = await _cache.HashGetAllAsync(UsersKey);
+        var result = new List<(string, string)>();
 
-    public void SendMessage(string userId, string text, ClientInfo? clientInfo = null)
+        foreach (var user in users)
+        {
+            if (await _cache.ExistsAsync(TypingKeyPrefix + user.Key))
+                result.Add((user.Key, user.Value));
+        }
+
+        return result;
+    }
+
+    public async Task SendMessageAsync(string userId, string text, ClientInfo? clientInfo = null)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
 
-        ClearTyping(userId);
-        var message = new ChatMessage(userId, GetUserName(userId), text.Trim(), DateTime.UtcNow);
-        EnqueueMessage(message, clientInfo);
+        await ClearTypingAsync(userId);
+        var userName = await GetUserNameAsync(userId);
+        var message = new ChatMessage(userId, userName, text.Trim(), DateTime.UtcNow);
+        await EnqueueMessageAsync(message, clientInfo);
     }
 
-    public void SendImages(string userId, IReadOnlyList<ImageData> images, string? caption = null, ClientInfo? clientInfo = null)
+    public async Task SendImagesAsync(string userId, IReadOnlyList<ImageData> images, string? caption = null, ClientInfo? clientInfo = null)
     {
         if (images.Count == 0) return;
 
-        ClearTyping(userId);
-        var message = new ChatMessage(userId, GetUserName(userId), caption?.Trim() ?? "", DateTime.UtcNow, MessageType.Image, Images: images);
-        EnqueueMessage(message, clientInfo);
+        await ClearTypingAsync(userId);
+        var userName = await GetUserNameAsync(userId);
+        var message = new ChatMessage(userId, userName, caption?.Trim() ?? "", DateTime.UtcNow, MessageType.Image, Images: images);
+        await EnqueueMessageAsync(message, clientInfo);
     }
 
-    public void SendMedia(string userId, MessageType type, string base64Data, string contentType, string? caption = null, ClientInfo? clientInfo = null)
+    public async Task SendMediaAsync(string userId, MessageType type, string base64Data, string contentType, string? caption = null, ClientInfo? clientInfo = null)
     {
         if (string.IsNullOrEmpty(base64Data)) return;
 
-        ClearTyping(userId);
-        var message = new ChatMessage(userId, GetUserName(userId), caption?.Trim() ?? "", DateTime.UtcNow, type, base64Data, contentType);
-        EnqueueMessage(message, clientInfo);
+        await ClearTypingAsync(userId);
+        var userName = await GetUserNameAsync(userId);
+        var message = new ChatMessage(userId, userName, caption?.Trim() ?? "", DateTime.UtcNow, type, base64Data, contentType);
+        await EnqueueMessageAsync(message, clientInfo);
     }
 
-    public IReadOnlyList<ChatMessage> GetRecentMessages()
-        => _messages.ToArray();
-
-    private void ClearTyping(string userId)
+    public async Task<IReadOnlyList<ChatMessage>> GetRecentMessagesAsync()
     {
-        _typingUsers.TryRemove(userId, out _);
-        RaiseEvent(OnTypingChanged, userId, GetUserName(userId), false);
+        var values = await _cache.ListRangeAsync(MessagesKey, 0, MaxMessages - 1);
+        return values
+            .Select(v => Deserialize<ChatMessage>(v))
+            .Where(m => m is not null)
+            .ToList()!;
     }
 
-    private void EnqueueMessage(ChatMessage message, ClientInfo? clientInfo)
+    private async Task ClearTypingAsync(string userId)
     {
-        _messages.Enqueue(message);
+        await _cache.RemoveAsync(TypingKeyPrefix + userId);
+        var userName = await GetUserNameAsync(userId);
+        await _cache.PublishAsync(ChannelTyping, Serialize(new TypingEvent(userId, userName, false)));
+    }
 
-        while (_messages.Count > MaxMessages)
-            _messages.TryDequeue(out _);
-
-        RaiseEvent(OnMessageReceived, message);
+    private async Task EnqueueMessageAsync(ChatMessage message, ClientInfo? clientInfo)
+    {
+        var json = Serialize(message);
+        await _cache.ListPushAsync(MessagesKey, json);
+        await _cache.ListTrimAsync(MessagesKey, -MaxMessages, -1);
+        await _cache.PublishAsync(ChannelMessage, json);
 
         if (clientInfo is not null)
         {
             _ = _auditService.LogMessageAsync(message, clientInfo.IpAddress, clientInfo.UserAgent);
         }
+    }
+
+    private static string Serialize<T>(T value) => JsonSerializer.Serialize(value, JsonOptions);
+
+    private static T? Deserialize<T>(string json)
+    {
+        try { return JsonSerializer.Deserialize<T>(json, JsonOptions); }
+        catch { return default; }
     }
 
     private void RaiseEvent<T>(Action<T>? handler, T arg)
@@ -147,4 +222,12 @@ public class ChatService : IChatService
         try { handler.Invoke(arg1, arg2, arg3); }
         catch (Exception ex) { _logger.LogError(ex, "Chat event handler failed"); }
     }
+
+    public void Dispose()
+    {
+        _cache.UnsubscribeAll();
+    }
+
+    private record UserEvent(string UserId, string UserName);
+    private record TypingEvent(string UserId, string UserName, bool IsTyping);
 }

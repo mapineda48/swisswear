@@ -131,11 +131,11 @@
     private int _lightboxIndex;
     private ClientInfo? _clientInfo;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _userId = ChatService.RegisterUser();
-        _messages = ChatService.GetRecentMessages().ToList();
-        _activeUsers = ChatService.GetActiveUsers().ToList();
+        _userId = await ChatService.RegisterUserAsync();
+        _messages = (await ChatService.GetRecentMessagesAsync()).ToList();
+        _activeUsers = (await ChatService.GetActiveUsersAsync()).ToList();
         _dotNetRef = DotNetObjectReference.Create(this);
 
         var httpContext = HttpContextAccessor.HttpContext;
@@ -184,13 +184,13 @@
 
     private void HandleUserJoined(string id, string name)
     {
-        _activeUsers = ChatService.GetActiveUsers().ToList();
+        _activeUsers.Add((id, name));
         InvokeAsync(StateHasChanged);
     }
 
     private void HandleUserLeft(string id)
     {
-        _activeUsers = ChatService.GetActiveUsers().ToList();
+        _activeUsers.RemoveAll(u => u.Id == id);
         InvokeAsync(StateHasChanged);
     }
 
@@ -206,19 +206,19 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private void OnTextChanged(string value)
+    private async Task OnTextChanged(string value)
     {
         if (!string.IsNullOrEmpty(value) && !_isTyping)
         {
             _isTyping = true;
-            ChatService.SetTyping(_userId, true);
+            await ChatService.SetTypingAsync(_userId, true);
         }
 
         _typingTimer?.Dispose();
-        _typingTimer = new System.Threading.Timer(_ =>
+        _typingTimer = new System.Threading.Timer(async _ =>
         {
             _isTyping = false;
-            ChatService.SetTyping(_userId, false);
+            await ChatService.SetTypingAsync(_userId, false);
         }, null, 3000, Timeout.Infinite);
     }
 
@@ -234,7 +234,7 @@
     }
 
     // ── Send ──
-    private void Send()
+    private async Task Send()
     {
         _typingTimer?.Dispose();
         _isTyping = false;
@@ -246,12 +246,12 @@
 
         if (hasImages)
         {
-            ChatService.SendImages(_userId, _pendingImages, hasText ? _messageInput : null, _clientInfo);
+            await ChatService.SendImagesAsync(_userId, _pendingImages, hasText ? _messageInput : null, _clientInfo);
             _pendingImages = new();
         }
         else
         {
-            ChatService.SendMessage(_userId, _messageInput, _clientInfo);
+            await ChatService.SendMessageAsync(_userId, _messageInput, _clientInfo);
         }
 
         _messageInput = "";
@@ -316,7 +316,7 @@
     }
 
     [JSInvokable]
-    public void OnAudioChunkReceived(string chunk, int index, int total, bool done)
+    public async Task OnAudioChunkReceived(string chunk, int index, int total, bool done)
     {
         if (_cancelRecording)
         {
@@ -324,7 +324,7 @@
             {
                 _audioChunks.Clear();
                 _cancelRecording = false;
-                InvokeAsync(StateHasChanged);
+                await InvokeAsync(StateHasChanged);
             }
             return;
         }
@@ -340,9 +340,9 @@
 
         if (!string.IsNullOrEmpty(base64Data))
         {
-            ChatService.SendMedia(_userId, MessageType.Audio, base64Data, "audio/webm", clientInfo: _clientInfo);
+            await ChatService.SendMediaAsync(_userId, MessageType.Audio, base64Data, "audio/webm", clientInfo: _clientInfo);
         }
-        InvokeAsync(StateHasChanged);
+        await InvokeAsync(StateHasChanged);
     }
 
     public async ValueTask DisposeAsync()
@@ -378,7 +378,7 @@
         ChatService.OnUserJoined -= HandleUserJoined;
         ChatService.OnUserLeft -= HandleUserLeft;
         ChatService.OnTypingChanged -= HandleTypingChanged;
-        ChatService.SetTyping(_userId, false);
-        ChatService.UnregisterUser(_userId);
+        await ChatService.SetTypingAsync(_userId, false);
+        await ChatService.UnregisterUserAsync(_userId);
     }
 }

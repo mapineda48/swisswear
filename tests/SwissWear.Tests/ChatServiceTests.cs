@@ -1,151 +1,267 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Moq;
 using SwissWear.Web.Services;
 
 namespace SwissWear.Tests;
 
-public class ChatServiceTests
+public class ChatServiceTests : IDisposable
 {
     private readonly Mock<IChatAuditService> _auditMock;
+    private readonly Mock<ICacheService> _cacheMock;
     private readonly ChatService _service;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    // Capture pub/sub subscription callbacks by channel
+    private readonly Dictionary<string, Action<string>> _subscriptions = new();
 
     public ChatServiceTests()
     {
         _auditMock = new Mock<IChatAuditService>();
         _auditMock.Setup(a => a.LogMessageAsync(It.IsAny<ChatMessage>(), It.IsAny<string>(), It.IsAny<string?>()))
             .Returns(Task.CompletedTask);
+
+        _cacheMock = new Mock<ICacheService>();
+
+        // Capture Subscribe calls
+        _cacheMock
+            .Setup(c => c.Subscribe(It.IsAny<string>(), It.IsAny<Action<string>>()))
+            .Callback<string, Action<string>>((channel, handler) => _subscriptions[channel] = handler);
+
+        // Make Publish trigger the local subscription (simulates single-node pub/sub)
+        _cacheMock
+            .Setup(c => c.PublishAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns<string, string, CancellationToken>((channel, message, _) =>
+            {
+                if (_subscriptions.TryGetValue(channel, out var handler))
+                    handler(message);
+                return Task.CompletedTask;
+            });
+
+        // Default async returns
+        _cacheMock.Setup(c => c.HashSetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _cacheMock.Setup(c => c.HashRemoveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _cacheMock.Setup(c => c.RemoveAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _cacheMock.Setup(c => c.SetAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _cacheMock.Setup(c => c.ListPushAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _cacheMock.Setup(c => c.ListTrimAsync(It.IsAny<string>(), It.IsAny<long>(), It.IsAny<long>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _cacheMock.Setup(c => c.HashGetAsync("chat:users", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
+
         var logger = new Mock<ILogger<ChatService>>();
-        _service = new ChatService(_auditMock.Object, logger.Object);
+        _service = new ChatService(_cacheMock.Object, _auditMock.Object, logger.Object);
+    }
+
+    public void Dispose()
+    {
+        _service.Dispose();
     }
 
     // --- RegisterUser / UnregisterUser ---
 
     [Fact]
-    public void RegisterUser_ReturnsUniqueId()
+    public async Task RegisterUserAsync_ReturnsUniqueId()
     {
-        var id1 = _service.RegisterUser();
-        var id2 = _service.RegisterUser();
+        var id1 = await _service.RegisterUserAsync();
+        var id2 = await _service.RegisterUserAsync();
 
         Assert.NotEqual(id1, id2);
     }
 
     [Fact]
-    public void RegisterUser_AddsToActiveUsers()
+    public async Task RegisterUserAsync_StoresInCache()
     {
-        var id = _service.RegisterUser();
+        var id = await _service.RegisterUserAsync();
 
-        var users = _service.GetActiveUsers();
-        Assert.Single(users);
-        Assert.Equal(id, users[0].Id);
+        _cacheMock.Verify(c => c.HashSetAsync(
+            "chat:users",
+            id,
+            It.Is<string>(v => v.StartsWith("User-")),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public void RegisterUser_RaisesOnUserJoined()
+    public async Task RegisterUserAsync_RaisesOnUserJoined()
     {
         string? joinedId = null;
         _service.OnUserJoined += (id, _) => joinedId = id;
 
-        var id = _service.RegisterUser();
+        var id = await _service.RegisterUserAsync();
 
         Assert.Equal(id, joinedId);
     }
 
     [Fact]
-    public void UnregisterUser_RemovesFromActiveUsers()
+    public async Task RegisterUserAsync_PublishesToChannel()
     {
-        var id = _service.RegisterUser();
+        await _service.RegisterUserAsync();
 
-        _service.UnregisterUser(id);
-
-        Assert.Empty(_service.GetActiveUsers());
+        _cacheMock.Verify(c => c.PublishAsync(
+            "chat:events:user_joined",
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public void UnregisterUser_RaisesOnUserLeft()
+    public async Task UnregisterUserAsync_RemovesFromCache()
     {
-        var id = _service.RegisterUser();
+        var id = await _service.RegisterUserAsync();
+
+        await _service.UnregisterUserAsync(id);
+
+        _cacheMock.Verify(c => c.HashRemoveAsync("chat:users", id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UnregisterUserAsync_RaisesOnUserLeft()
+    {
+        var id = await _service.RegisterUserAsync();
         string? leftId = null;
         _service.OnUserLeft += uid => leftId = uid;
 
-        _service.UnregisterUser(id);
+        await _service.UnregisterUserAsync(id);
 
         Assert.Equal(id, leftId);
     }
 
-    // --- GetUserName ---
+    [Fact]
+    public async Task UnregisterUserAsync_CleansUpTypingKey()
+    {
+        var id = await _service.RegisterUserAsync();
+
+        await _service.UnregisterUserAsync(id);
+
+        _cacheMock.Verify(c => c.RemoveAsync($"chat:typing:{id}", It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+    }
+
+    // --- GetUserNameAsync ---
 
     [Fact]
-    public void GetUserName_ReturnsName_WhenUserExists()
+    public async Task GetUserNameAsync_ReturnsName_WhenUserExists()
     {
-        var id = _service.RegisterUser();
-        var name = _service.GetUserName(id);
+        _cacheMock.Setup(c => c.HashGetAsync("chat:users", "user1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("User-abc");
 
-        Assert.StartsWith("User-", name);
+        var name = await _service.GetUserNameAsync("user1");
+
+        Assert.Equal("User-abc", name);
     }
 
     [Fact]
-    public void GetUserName_ReturnsUnknown_WhenUserDoesNotExist()
+    public async Task GetUserNameAsync_ReturnsUnknown_WhenUserDoesNotExist()
     {
-        var name = _service.GetUserName("nonexistent");
+        _cacheMock.Setup(c => c.HashGetAsync("chat:users", "nonexistent", It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+
+        var name = await _service.GetUserNameAsync("nonexistent");
 
         Assert.Equal("Unknown", name);
     }
 
-    // --- SendMessage ---
+    // --- GetActiveUsersAsync ---
 
     [Fact]
-    public void SendMessage_AddsToRecentMessages()
+    public async Task GetActiveUsersAsync_ReturnsAllUsersFromCache()
     {
-        var id = _service.RegisterUser();
+        _cacheMock.Setup(c => c.HashGetAllAsync("chat:users", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, string>
+            {
+                ["id1"] = "User-1",
+                ["id2"] = "User-2"
+            });
 
-        _service.SendMessage(id, "Hello");
+        var users = await _service.GetActiveUsersAsync();
 
-        var messages = _service.GetRecentMessages();
-        Assert.Single(messages);
-        Assert.Equal("Hello", messages[0].Text);
-        Assert.Equal(MessageType.Text, messages[0].Type);
+        Assert.Equal(2, users.Count);
+        Assert.Contains(users, u => u.Id == "id1" && u.Name == "User-1");
+        Assert.Contains(users, u => u.Id == "id2" && u.Name == "User-2");
+    }
+
+    // --- SendMessageAsync ---
+
+    [Fact]
+    public async Task SendMessageAsync_StoresInCacheList()
+    {
+        SetupUserInHash("user1", "User-1");
+
+        await _service.SendMessageAsync("user1", "Hello");
+
+        _cacheMock.Verify(c => c.ListPushAsync(
+            "chat:messages",
+            It.Is<string>(v => v.Contains("Hello")),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public void SendMessage_IgnoresWhitespace()
+    public async Task SendMessageAsync_TrimsListToMaxMessages()
     {
-        var id = _service.RegisterUser();
+        SetupUserInHash("user1", "User-1");
 
-        _service.SendMessage(id, "   ");
+        await _service.SendMessageAsync("user1", "Hello");
 
-        Assert.Empty(_service.GetRecentMessages());
+        _cacheMock.Verify(c => c.ListTrimAsync("chat:messages", -200, -1, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public void SendMessage_TrimsText()
+    public async Task SendMessageAsync_IgnoresWhitespace()
     {
-        var id = _service.RegisterUser();
+        await _service.SendMessageAsync("user1", "   ");
 
-        _service.SendMessage(id, "  Hello  ");
-
-        Assert.Equal("Hello", _service.GetRecentMessages()[0].Text);
+        _cacheMock.Verify(c => c.ListPushAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
-    public void SendMessage_RaisesOnMessageReceived()
+    public async Task SendMessageAsync_TrimsText()
     {
-        var id = _service.RegisterUser();
+        SetupUserInHash("user1", "User-1");
         ChatMessage? received = null;
         _service.OnMessageReceived += msg => received = msg;
 
-        _service.SendMessage(id, "Test");
+        await _service.SendMessageAsync("user1", "  Hello  ");
+
+        Assert.NotNull(received);
+        Assert.Equal("Hello", received.Text);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_RaisesOnMessageReceived()
+    {
+        SetupUserInHash("user1", "User-1");
+        ChatMessage? received = null;
+        _service.OnMessageReceived += msg => received = msg;
+
+        await _service.SendMessageAsync("user1", "Test");
 
         Assert.NotNull(received);
         Assert.Equal("Test", received.Text);
     }
 
     [Fact]
-    public void SendMessage_WithClientInfo_CallsAuditService()
+    public async Task SendMessageAsync_PublishesToChannel()
     {
-        var id = _service.RegisterUser();
+        SetupUserInHash("user1", "User-1");
+
+        await _service.SendMessageAsync("user1", "Hello");
+
+        _cacheMock.Verify(c => c.PublishAsync(
+            "chat:events:message",
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendMessageAsync_WithClientInfo_CallsAuditService()
+    {
+        SetupUserInHash("user1", "User-1");
         var clientInfo = new ClientInfo("127.0.0.1", "TestAgent");
 
-        _service.SendMessage(id, "Hello", clientInfo);
+        await _service.SendMessageAsync("user1", "Hello", clientInfo);
 
         _auditMock.Verify(a => a.LogMessageAsync(
             It.Is<ChatMessage>(m => m.Text == "Hello"),
@@ -154,92 +270,125 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public void SendMessage_WithoutClientInfo_DoesNotCallAuditService()
+    public async Task SendMessageAsync_WithoutClientInfo_DoesNotCallAuditService()
     {
-        var id = _service.RegisterUser();
+        SetupUserInHash("user1", "User-1");
 
-        _service.SendMessage(id, "Hello");
+        await _service.SendMessageAsync("user1", "Hello");
 
         _auditMock.Verify(a => a.LogMessageAsync(
             It.IsAny<ChatMessage>(), It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
     }
 
     [Fact]
-    public void SendMessage_ClearsTypingStatus()
+    public async Task SendMessageAsync_ClearsTypingKey()
     {
-        var id = _service.RegisterUser();
-        _service.SetTyping(id, true);
+        SetupUserInHash("user1", "User-1");
 
-        bool? typingChanged = null;
-        _service.OnTypingChanged += (uid, _, isTyping) =>
-        {
-            if (uid == id) typingChanged = isTyping;
-        };
+        await _service.SendMessageAsync("user1", "Hello");
 
-        _service.SendMessage(id, "Hello");
-
-        Assert.False(typingChanged);
+        _cacheMock.Verify(c => c.RemoveAsync($"chat:typing:user1", It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    // --- SendImages ---
+    // --- SendImagesAsync ---
 
     [Fact]
-    public void SendImages_AddsImageMessage()
+    public async Task SendImagesAsync_StoresImageMessage()
     {
-        var id = _service.RegisterUser();
+        SetupUserInHash("user1", "User-1");
+        ChatMessage? received = null;
+        _service.OnMessageReceived += msg => received = msg;
         var images = new List<ImageData> { new("base64data", "image/png") };
 
-        _service.SendImages(id, images, "caption");
+        await _service.SendImagesAsync("user1", images, "caption");
 
-        var messages = _service.GetRecentMessages();
-        Assert.Single(messages);
-        Assert.Equal(MessageType.Image, messages[0].Type);
-        Assert.Equal("caption", messages[0].Text);
-        Assert.Single(messages[0].Images!);
+        Assert.NotNull(received);
+        Assert.Equal(MessageType.Image, received.Type);
+        Assert.Equal("caption", received.Text);
     }
 
     [Fact]
-    public void SendImages_IgnoresEmptyList()
+    public async Task SendImagesAsync_IgnoresEmptyList()
     {
-        var id = _service.RegisterUser();
+        await _service.SendImagesAsync("user1", new List<ImageData>());
 
-        _service.SendImages(id, new List<ImageData>());
-
-        Assert.Empty(_service.GetRecentMessages());
+        _cacheMock.Verify(c => c.ListPushAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // --- SendMedia ---
+    // --- SendMediaAsync ---
 
     [Fact]
-    public void SendMedia_AddsAudioMessage()
+    public async Task SendMediaAsync_StoresAudioMessage()
     {
-        var id = _service.RegisterUser();
+        SetupUserInHash("user1", "User-1");
+        ChatMessage? received = null;
+        _service.OnMessageReceived += msg => received = msg;
 
-        _service.SendMedia(id, MessageType.Audio, "audiodata", "audio/webm", "note");
+        await _service.SendMediaAsync("user1", MessageType.Audio, "audiodata", "audio/webm", "note");
 
-        var messages = _service.GetRecentMessages();
-        Assert.Single(messages);
-        Assert.Equal(MessageType.Audio, messages[0].Type);
-        Assert.Equal("audiodata", messages[0].MediaData);
-        Assert.Equal("audio/webm", messages[0].MediaContentType);
+        Assert.NotNull(received);
+        Assert.Equal(MessageType.Audio, received.Type);
+        Assert.Equal("audiodata", received.MediaData);
+        Assert.Equal("audio/webm", received.MediaContentType);
     }
 
     [Fact]
-    public void SendMedia_IgnoresEmptyData()
+    public async Task SendMediaAsync_IgnoresEmptyData()
     {
-        var id = _service.RegisterUser();
+        await _service.SendMediaAsync("user1", MessageType.Audio, "", "audio/webm");
 
-        _service.SendMedia(id, MessageType.Audio, "", "audio/webm");
-
-        Assert.Empty(_service.GetRecentMessages());
+        _cacheMock.Verify(c => c.ListPushAsync(
+            It.IsAny<string>(),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    // --- SetTyping ---
+    // --- SetTypingAsync ---
 
     [Fact]
-    public void SetTyping_RaisesOnTypingChanged()
+    public async Task SetTypingAsync_True_SetsKeyWithExpiry()
     {
-        var id = _service.RegisterUser();
+        SetupUserInHash("user1", "User-1");
+
+        await _service.SetTypingAsync("user1", true);
+
+        _cacheMock.Verify(c => c.SetAsync(
+            "chat:typing:user1",
+            "1",
+            TimeSpan.FromSeconds(5),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SetTypingAsync_False_DeletesKey()
+    {
+        SetupUserInHash("user1", "User-1");
+
+        await _service.SetTypingAsync("user1", false);
+
+        _cacheMock.Verify(c => c.RemoveAsync("chat:typing:user1", It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SetTypingAsync_PublishesToChannel()
+    {
+        SetupUserInHash("user1", "User-1");
+
+        await _service.SetTypingAsync("user1", true);
+
+        _cacheMock.Verify(c => c.PublishAsync(
+            "chat:events:typing",
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task SetTypingAsync_RaisesOnTypingChanged()
+    {
+        SetupUserInHash("user1", "User-1");
         string? typingUserId = null;
         bool? isTyping = null;
         _service.OnTypingChanged += (uid, _, typing) =>
@@ -248,61 +397,72 @@ public class ChatServiceTests
             isTyping = typing;
         };
 
-        _service.SetTyping(id, true);
+        await _service.SetTypingAsync("user1", true);
 
-        Assert.Equal(id, typingUserId);
+        Assert.Equal("user1", typingUserId);
         Assert.True(isTyping);
     }
 
-    [Fact]
-    public void GetTypingUsers_ReturnsCurrentlyTyping()
-    {
-        var id = _service.RegisterUser();
-        _service.SetTyping(id, true);
+    // --- GetTypingUsersAsync ---
 
-        var typing = _service.GetTypingUsers();
+    [Fact]
+    public async Task GetTypingUsersAsync_ReturnsOnlyUsersWithActiveTypingKey()
+    {
+        _cacheMock.Setup(c => c.HashGetAllAsync("chat:users", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Dictionary<string, string>
+            {
+                ["id1"] = "User-1",
+                ["id2"] = "User-2"
+            });
+
+        _cacheMock.Setup(c => c.ExistsAsync("chat:typing:id1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        _cacheMock.Setup(c => c.ExistsAsync("chat:typing:id2", It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        var typing = await _service.GetTypingUsersAsync();
 
         Assert.Single(typing);
-        Assert.Equal(id, typing[0].Id);
+        Assert.Equal("id1", typing[0].Id);
     }
 
-    [Fact]
-    public void GetTypingUsers_ExcludesStoppedTyping()
-    {
-        var id = _service.RegisterUser();
-        _service.SetTyping(id, true);
-        _service.SetTyping(id, false);
-
-        Assert.Empty(_service.GetTypingUsers());
-    }
-
-    // --- Message queue limit ---
+    // --- GetRecentMessagesAsync ---
 
     [Fact]
-    public void EnqueueMessage_RespectMaxMessages()
+    public async Task GetRecentMessagesAsync_ReturnsMessagesFromCache()
     {
-        var id = _service.RegisterUser();
+        var msg = new ChatMessage("u1", "User-1", "Hello", DateTime.UtcNow);
+        var json = JsonSerializer.Serialize(msg, JsonOptions);
 
-        for (var i = 0; i < 210; i++)
-            _service.SendMessage(id, $"msg-{i}");
+        _cacheMock.Setup(c => c.ListRangeAsync("chat:messages", 0, 199, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string> { json });
 
-        var messages = _service.GetRecentMessages();
-        Assert.Equal(200, messages.Count);
-        Assert.Equal("msg-10", messages[0].Text);
+        var messages = await _service.GetRecentMessagesAsync();
+
+        Assert.Single(messages);
+        Assert.Equal("Hello", messages[0].Text);
     }
 
     // --- Event safety ---
 
     [Fact]
-    public void EventHandler_Exception_DoesNotCrash()
+    public async Task EventHandler_Exception_DoesNotCrash()
     {
+        SetupUserInHash("user1", "User-1");
         _service.OnMessageReceived += _ => throw new InvalidOperationException("Boom");
 
-        var id = _service.RegisterUser();
+        await _service.SendMessageAsync("user1", "Hello");
 
-        // Should not throw
-        _service.SendMessage(id, "Hello");
+        // Should not throw - verify message was still stored
+        _cacheMock.Verify(c => c.ListPushAsync(
+            "chat:messages",
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
 
-        Assert.Single(_service.GetRecentMessages());
+    // --- Helpers ---
+
+    private void SetupUserInHash(string userId, string userName)
+    {
+        _cacheMock.Setup(c => c.HashGetAsync("chat:users", userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(userName);
     }
 }

@@ -7,14 +7,14 @@ public interface IChatService
     event Action<string>? OnUserLeft;
     event Action<string, string, bool>? OnTypingChanged;
 
-    string RegisterUser();
-    void UnregisterUser(string userId);
-    string GetUserName(string userId);
-    IReadOnlyList<(string Id, string Name)> GetActiveUsers();
-    void SetTyping(string userId, bool isTyping);
-    IReadOnlyList<(string Id, string Name)> GetTypingUsers();
-    void SendMessage(string userId, string text, ClientInfo? clientInfo = null);
-    void SendImages(string userId, IReadOnlyList<ImageData> images, string? caption = null, ClientInfo? clientInfo = null);
-    void SendMedia(string userId, MessageType type, string base64Data, string contentType, string? caption = null, ClientInfo? clientInfo = null);
-    IReadOnlyList<ChatMessage> GetRecentMessages();
+    Task<string> RegisterUserAsync();
+    Task UnregisterUserAsync(string userId);
+    Task<string> GetUserNameAsync(string userId);
+    Task<IReadOnlyList<(string Id, string Name)>> GetActiveUsersAsync();
+    Task SetTypingAsync(string userId, bool isTyping);
+    Task<IReadOnlyList<(string Id, string Name)>> GetTypingUsersAsync();
+    Task SendMessageAsync(string userId, string text, ClientInfo? clientInfo = null);
+    Task SendImagesAsync(string userId, IReadOnlyList<ImageData> images, string? caption = null, ClientInfo? clientInfo = null);
+    Task SendMediaAsync(string userId, MessageType type, string base64Data, string contentType, string? caption = null, ClientInfo? clientInfo = null);
+    Task<IReadOnlyList<ChatMessage>> GetRecentMessagesAsync();
 }

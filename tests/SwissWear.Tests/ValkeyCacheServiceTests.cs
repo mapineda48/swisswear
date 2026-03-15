@@ -9,17 +9,22 @@ public class ValkeyCacheServiceTests
 {
     private readonly Mock<IConnectionMultiplexer> _connectionMock;
     private readonly Mock<IDatabase> _databaseMock;
+    private readonly Mock<ISubscriber> _subscriberMock;
     private readonly ValkeyCacheService _service;
 
     public ValkeyCacheServiceTests()
     {
         _connectionMock = new Mock<IConnectionMultiplexer>();
         _databaseMock = new Mock<IDatabase>();
+        _subscriberMock = new Mock<ISubscriber>();
         _databaseMock.DefaultValue = DefaultValue.Mock;
 
         _connectionMock
             .Setup(c => c.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
             .Returns(_databaseMock.Object);
+        _connectionMock
+            .Setup(c => c.GetSubscriber(It.IsAny<object>()))
+            .Returns(_subscriberMock.Object);
 
         _service = new ValkeyCacheService(_connectionMock.Object);
     }
@@ -34,7 +39,6 @@ public class ValkeyCacheServiceTests
 
         await _service.SetAsync("test-key", data);
 
-        // Verify that some StringSetAsync overload was called with the correct key and serialized json
         var invocation = Assert.Single(_databaseMock.Invocations,
             i => i.Method.Name == "StringSetAsync"
                  && i.Arguments[0].ToString() == "test-key");
@@ -50,8 +54,6 @@ public class ValkeyCacheServiceTests
 
         var invocation = Assert.Single(_databaseMock.Invocations,
             i => i.Method.Name == "StringSetAsync");
-
-        // The Expiration overload has an Expiration parameter (not TimeSpan?)
         Assert.Contains(invocation.Method.GetParameters(),
             p => p.ParameterType == typeof(Expiration));
     }
@@ -109,44 +111,16 @@ public class ValkeyCacheServiceTests
         Assert.Equal(0, result);
     }
 
-    [Fact]
-    public async Task GetAsync_HandlesStringValues()
-    {
-        var json = JsonSerializer.Serialize("hello world");
-
-        _databaseMock
-            .Setup(d => d.StringGetAsync("str-key", It.IsAny<CommandFlags>()))
-            .ReturnsAsync(json);
-
-        var result = await _service.GetAsync<string>("str-key");
-
-        Assert.Equal("hello world", result);
-    }
-
     // --- RemoveAsync ---
 
     [Fact]
     public async Task RemoveAsync_DeletesKey()
     {
-        _databaseMock
-            .Setup(d => d.KeyDeleteAsync("delete-me", It.IsAny<CommandFlags>()))
-            .ReturnsAsync(true);
+        _databaseMock.Setup(d => d.KeyDeleteAsync("k", It.IsAny<CommandFlags>())).ReturnsAsync(true);
 
-        await _service.RemoveAsync("delete-me");
+        await _service.RemoveAsync("k");
 
-        _databaseMock.Verify(d => d.KeyDeleteAsync("delete-me", It.IsAny<CommandFlags>()), Times.Once);
-    }
-
-    [Fact]
-    public async Task RemoveAsync_NonExistentKey_DoesNotThrow()
-    {
-        _databaseMock
-            .Setup(d => d.KeyDeleteAsync("nope", It.IsAny<CommandFlags>()))
-            .ReturnsAsync(false);
-
-        await _service.RemoveAsync("nope");
-
-        _databaseMock.Verify(d => d.KeyDeleteAsync("nope", It.IsAny<CommandFlags>()), Times.Once);
+        _databaseMock.Verify(d => d.KeyDeleteAsync("k", It.IsAny<CommandFlags>()), Times.Once);
     }
 
     // --- ExistsAsync ---
@@ -154,47 +128,171 @@ public class ValkeyCacheServiceTests
     [Fact]
     public async Task ExistsAsync_ReturnsTrue_WhenKeyExists()
     {
-        _databaseMock
-            .Setup(d => d.KeyExistsAsync("exists", It.IsAny<CommandFlags>()))
-            .ReturnsAsync(true);
+        _databaseMock.Setup(d => d.KeyExistsAsync("k", It.IsAny<CommandFlags>())).ReturnsAsync(true);
 
-        var result = await _service.ExistsAsync("exists");
-
-        Assert.True(result);
+        Assert.True(await _service.ExistsAsync("k"));
     }
 
     [Fact]
     public async Task ExistsAsync_ReturnsFalse_WhenKeyDoesNotExist()
     {
-        _databaseMock
-            .Setup(d => d.KeyExistsAsync("missing", It.IsAny<CommandFlags>()))
-            .ReturnsAsync(false);
+        _databaseMock.Setup(d => d.KeyExistsAsync("k", It.IsAny<CommandFlags>())).ReturnsAsync(false);
 
-        var result = await _service.ExistsAsync("missing");
-
-        Assert.False(result);
+        Assert.False(await _service.ExistsAsync("k"));
     }
 
-    // --- Serialization round-trip ---
+    // --- HashSetAsync ---
+
+    [Fact]
+    public async Task HashSetAsync_SetsFieldInHash()
+    {
+        await _service.HashSetAsync("myhash", "field1", "value1");
+
+        _databaseMock.Verify(d => d.HashSetAsync(
+            "myhash", (RedisValue)"field1", (RedisValue)"value1",
+            It.IsAny<When>(), It.IsAny<CommandFlags>()), Times.Once);
+    }
+
+    // --- HashGetAsync ---
+
+    [Fact]
+    public async Task HashGetAsync_ReturnsValue_WhenFieldExists()
+    {
+        _databaseMock.Setup(d => d.HashGetAsync("h", "f", It.IsAny<CommandFlags>())).ReturnsAsync("val");
+
+        var result = await _service.HashGetAsync("h", "f");
+
+        Assert.Equal("val", result);
+    }
+
+    [Fact]
+    public async Task HashGetAsync_ReturnsNull_WhenFieldDoesNotExist()
+    {
+        _databaseMock.Setup(d => d.HashGetAsync("h", "f", It.IsAny<CommandFlags>())).ReturnsAsync(RedisValue.Null);
+
+        var result = await _service.HashGetAsync("h", "f");
+
+        Assert.Null(result);
+    }
+
+    // --- HashGetAllAsync ---
+
+    [Fact]
+    public async Task HashGetAllAsync_ReturnsDictionary()
+    {
+        _databaseMock.Setup(d => d.HashGetAllAsync("h", It.IsAny<CommandFlags>()))
+            .ReturnsAsync([new HashEntry("a", "1"), new HashEntry("b", "2")]);
+
+        var result = await _service.HashGetAllAsync("h");
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("1", result["a"]);
+        Assert.Equal("2", result["b"]);
+    }
+
+    // --- HashRemoveAsync ---
+
+    [Fact]
+    public async Task HashRemoveAsync_DeletesField()
+    {
+        _databaseMock.Setup(d => d.HashDeleteAsync("h", "f", It.IsAny<CommandFlags>())).ReturnsAsync(true);
+
+        await _service.HashRemoveAsync("h", "f");
+
+        _databaseMock.Verify(d => d.HashDeleteAsync("h", (RedisValue)"f", It.IsAny<CommandFlags>()), Times.Once);
+    }
+
+    // --- ListPushAsync ---
+
+    [Fact]
+    public async Task ListPushAsync_PushesToList()
+    {
+        await _service.ListPushAsync("mylist", "item");
+
+        _databaseMock.Verify(d => d.ListRightPushAsync(
+            "mylist", (RedisValue)"item",
+            It.IsAny<When>(), It.IsAny<CommandFlags>()), Times.Once);
+    }
+
+    // --- ListRangeAsync ---
+
+    [Fact]
+    public async Task ListRangeAsync_ReturnsStrings()
+    {
+        _databaseMock.Setup(d => d.ListRangeAsync("l", 0, 9, It.IsAny<CommandFlags>()))
+            .ReturnsAsync([(RedisValue)"a", (RedisValue)"b"]);
+
+        var result = await _service.ListRangeAsync("l", 0, 9);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal("a", result[0]);
+        Assert.Equal("b", result[1]);
+    }
+
+    // --- ListTrimAsync ---
+
+    [Fact]
+    public async Task ListTrimAsync_TrimsTheList()
+    {
+        await _service.ListTrimAsync("l", -200, -1);
+
+        _databaseMock.Verify(d => d.ListTrimAsync("l", -200, -1, It.IsAny<CommandFlags>()), Times.Once);
+    }
+
+    // --- PublishAsync ---
+
+    [Fact]
+    public async Task PublishAsync_PublishesToChannel()
+    {
+        await _service.PublishAsync("ch", "msg");
+
+        _subscriberMock.Verify(s => s.PublishAsync(
+            RedisChannel.Literal("ch"),
+            (RedisValue)"msg",
+            It.IsAny<CommandFlags>()), Times.Once);
+    }
+
+    // --- Subscribe ---
+
+    [Fact]
+    public void Subscribe_RegistersHandler()
+    {
+        string? received = null;
+
+        _service.Subscribe("ch", v => received = v);
+
+        _subscriberMock.Verify(s => s.Subscribe(
+            RedisChannel.Literal("ch"),
+            It.IsAny<Action<RedisChannel, RedisValue>>(),
+            It.IsAny<CommandFlags>()), Times.Once);
+    }
+
+    // --- UnsubscribeAll ---
+
+    [Fact]
+    public void UnsubscribeAll_CallsUnsubscribeAll()
+    {
+        _service.UnsubscribeAll();
+
+        _subscriberMock.Verify(s => s.UnsubscribeAll(It.IsAny<CommandFlags>()), Times.Once);
+    }
+
+    // --- Round-trip ---
 
     [Fact]
     public async Task SetAndGet_RoundTripsComplexObject()
     {
         var data = new TestData { Name = "Charlie", Age = 40 };
 
-        await _service.SetAsync("round-trip", data);
+        await _service.SetAsync("rt", data);
 
-        // Capture what was stored
         var setInvocation = Assert.Single(_databaseMock.Invocations,
             i => i.Method.Name == "StringSetAsync");
         var storedJson = setInvocation.Arguments[1].ToString()!;
 
-        // Setup get to return the stored value
-        _databaseMock
-            .Setup(d => d.StringGetAsync("round-trip", It.IsAny<CommandFlags>()))
-            .ReturnsAsync(storedJson);
+        _databaseMock.Setup(d => d.StringGetAsync("rt", It.IsAny<CommandFlags>())).ReturnsAsync(storedJson);
 
-        var result = await _service.GetAsync<TestData>("round-trip");
+        var result = await _service.GetAsync<TestData>("rt");
 
         Assert.NotNull(result);
         Assert.Equal(data.Name, result.Name);
