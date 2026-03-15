@@ -29,6 +29,7 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(
     ConnectionMultiplexer.Connect(builder.Configuration["Valkey:ConnectionString"]
         ?? throw new InvalidOperationException("Valkey:ConnectionString is not configured.")));
 builder.Services.AddSingleton<ICacheService, ValkeyCacheService>();
+builder.Services.AddSingleton<IPubSubService, ValkeyPubSubService>();
 
 // HTTP context for capturing client info (IP, UserAgent)
 builder.Services.AddHttpContextAccessor();

@@ -7,26 +7,20 @@ namespace SwissWear.Tests;
 
 public class ValkeyCacheServiceTests
 {
-    private readonly Mock<IConnectionMultiplexer> _connectionMock;
     private readonly Mock<IDatabase> _databaseMock;
-    private readonly Mock<ISubscriber> _subscriberMock;
     private readonly ValkeyCacheService _service;
 
     public ValkeyCacheServiceTests()
     {
-        _connectionMock = new Mock<IConnectionMultiplexer>();
+        var connectionMock = new Mock<IConnectionMultiplexer>();
         _databaseMock = new Mock<IDatabase>();
-        _subscriberMock = new Mock<ISubscriber>();
         _databaseMock.DefaultValue = DefaultValue.Mock;
 
-        _connectionMock
+        connectionMock
             .Setup(c => c.GetDatabase(It.IsAny<int>(), It.IsAny<object>()))
             .Returns(_databaseMock.Object);
-        _connectionMock
-            .Setup(c => c.GetSubscriber(It.IsAny<object>()))
-            .Returns(_subscriberMock.Object);
 
-        _service = new ValkeyCacheService(_connectionMock.Object);
+        _service = new ValkeyCacheService(connectionMock.Object);
     }
 
     // --- SetAsync ---
@@ -237,44 +231,6 @@ public class ValkeyCacheServiceTests
         await _service.ListTrimAsync("l", -200, -1);
 
         _databaseMock.Verify(d => d.ListTrimAsync("l", -200, -1, It.IsAny<CommandFlags>()), Times.Once);
-    }
-
-    // --- PublishAsync ---
-
-    [Fact]
-    public async Task PublishAsync_PublishesToChannel()
-    {
-        await _service.PublishAsync("ch", "msg");
-
-        _subscriberMock.Verify(s => s.PublishAsync(
-            RedisChannel.Literal("ch"),
-            (RedisValue)"msg",
-            It.IsAny<CommandFlags>()), Times.Once);
-    }
-
-    // --- Subscribe ---
-
-    [Fact]
-    public void Subscribe_RegistersHandler()
-    {
-        string? received = null;
-
-        _service.Subscribe("ch", v => received = v);
-
-        _subscriberMock.Verify(s => s.Subscribe(
-            RedisChannel.Literal("ch"),
-            It.IsAny<Action<RedisChannel, RedisValue>>(),
-            It.IsAny<CommandFlags>()), Times.Once);
-    }
-
-    // --- UnsubscribeAll ---
-
-    [Fact]
-    public void UnsubscribeAll_CallsUnsubscribeAll()
-    {
-        _service.UnsubscribeAll();
-
-        _subscriberMock.Verify(s => s.UnsubscribeAll(It.IsAny<CommandFlags>()), Times.Once);
     }
 
     // --- Round-trip ---

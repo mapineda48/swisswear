@@ -6,12 +6,10 @@ namespace SwissWear.Web.Services;
 public class ValkeyCacheService : ICacheService
 {
     private readonly IDatabase _database;
-    private readonly ISubscriber _subscriber;
 
     public ValkeyCacheService(IConnectionMultiplexer connection)
     {
         _database = connection.GetDatabase();
-        _subscriber = connection.GetSubscriber();
     }
 
     // --- Key-value ---
@@ -86,25 +84,5 @@ public class ValkeyCacheService : ICacheService
     public async Task ListTrimAsync(string key, long start, long stop, CancellationToken cancellationToken = default)
     {
         await _database.ListTrimAsync(key, start, stop);
-    }
-
-    // --- Pub/Sub ---
-
-    public async Task PublishAsync(string channel, string message, CancellationToken cancellationToken = default)
-    {
-        await _subscriber.PublishAsync(RedisChannel.Literal(channel), message);
-    }
-
-    public void Subscribe(string channel, Action<string> handler)
-    {
-        _subscriber.Subscribe(RedisChannel.Literal(channel), (_, value) =>
-        {
-            handler(value.ToString());
-        });
-    }
-
-    public void UnsubscribeAll()
-    {
-        _subscriber.UnsubscribeAll();
     }
 }

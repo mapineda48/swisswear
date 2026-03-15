@@ -32,6 +32,7 @@ public class ChatService : IChatService, IDisposable
     private static readonly TimeSpan TypingExpiry = TimeSpan.FromSeconds(5);
 
     private readonly ICacheService _cache;
+    private readonly IPubSubService _pubSub;
     private readonly IChatAuditService _auditService;
     private readonly ILogger<ChatService> _logger;
 
@@ -45,9 +46,10 @@ public class ChatService : IChatService, IDisposable
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public ChatService(ICacheService cache, IChatAuditService auditService, ILogger<ChatService> logger)
+    public ChatService(ICacheService cache, IPubSubService pubSub, IChatAuditService auditService, ILogger<ChatService> logger)
     {
         _cache = cache;
+        _pubSub = pubSub;
         _auditService = auditService;
         _logger = logger;
 
@@ -56,24 +58,24 @@ public class ChatService : IChatService, IDisposable
 
     private void SubscribeToChannels()
     {
-        _cache.Subscribe(ChannelMessage, value =>
+        _pubSub.Subscribe(ChannelMessage, value =>
         {
             var msg = Deserialize<ChatMessage>(value);
             if (msg is not null) RaiseEvent(OnMessageReceived, msg);
         });
 
-        _cache.Subscribe(ChannelUserJoined, value =>
+        _pubSub.Subscribe(ChannelUserJoined, value =>
         {
             var data = Deserialize<UserEvent>(value);
             if (data is not null) RaiseEvent(OnUserJoined, data.UserId, data.UserName);
         });
 
-        _cache.Subscribe(ChannelUserLeft, value =>
+        _pubSub.Subscribe(ChannelUserLeft, value =>
         {
             RaiseEvent(OnUserLeft, value);
         });
 
-        _cache.Subscribe(ChannelTyping, value =>
+        _pubSub.Subscribe(ChannelTyping, value =>
         {
             var data = Deserialize<TypingEvent>(value);
             if (data is not null) RaiseEvent(OnTypingChanged, data.UserId, data.UserName, data.IsTyping);
@@ -85,7 +87,7 @@ public class ChatService : IChatService, IDisposable
         var id = Guid.NewGuid().ToString("N")[..8];
         var name = $"User-{id}";
         await _cache.HashSetAsync(UsersKey, id, name);
-        await _cache.PublishAsync(ChannelUserJoined, Serialize(new UserEvent(id, name)));
+        await _pubSub.PublishAsync(ChannelUserJoined, Serialize(new UserEvent(id, name)));
         return id;
     }
 
@@ -93,7 +95,7 @@ public class ChatService : IChatService, IDisposable
     {
         await _cache.HashRemoveAsync(UsersKey, userId);
         await _cache.RemoveAsync(TypingKeyPrefix + userId);
-        await _cache.PublishAsync(ChannelUserLeft, userId);
+        await _pubSub.PublishAsync(ChannelUserLeft, userId);
     }
 
     public async Task<string> GetUserNameAsync(string userId)
@@ -118,7 +120,7 @@ public class ChatService : IChatService, IDisposable
             await _cache.RemoveAsync(key);
 
         var userName = await GetUserNameAsync(userId);
-        await _cache.PublishAsync(ChannelTyping, Serialize(new TypingEvent(userId, userName, isTyping)));
+        await _pubSub.PublishAsync(ChannelTyping, Serialize(new TypingEvent(userId, userName, isTyping)));
     }
 
     public async Task<IReadOnlyList<(string Id, string Name)>> GetTypingUsersAsync()
@@ -178,7 +180,7 @@ public class ChatService : IChatService, IDisposable
     {
         await _cache.RemoveAsync(TypingKeyPrefix + userId);
         var userName = await GetUserNameAsync(userId);
-        await _cache.PublishAsync(ChannelTyping, Serialize(new TypingEvent(userId, userName, false)));
+        await _pubSub.PublishAsync(ChannelTyping, Serialize(new TypingEvent(userId, userName, false)));
     }
 
     private async Task EnqueueMessageAsync(ChatMessage message, ClientInfo? clientInfo)
@@ -186,7 +188,7 @@ public class ChatService : IChatService, IDisposable
         var json = Serialize(message);
         await _cache.ListPushAsync(MessagesKey, json);
         await _cache.ListTrimAsync(MessagesKey, -MaxMessages, -1);
-        await _cache.PublishAsync(ChannelMessage, json);
+        await _pubSub.PublishAsync(ChannelMessage, json);
 
         if (clientInfo is not null)
         {
@@ -225,7 +227,7 @@ public class ChatService : IChatService, IDisposable
 
     public void Dispose()
     {
-        _cache.UnsubscribeAll();
+        _pubSub.UnsubscribeAll();
     }
 
     private record UserEvent(string UserId, string UserName);

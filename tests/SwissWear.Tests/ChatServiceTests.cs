@@ -9,6 +9,7 @@ public class ChatServiceTests : IDisposable
 {
     private readonly Mock<IChatAuditService> _auditMock;
     private readonly Mock<ICacheService> _cacheMock;
+    private readonly Mock<IPubSubService> _pubSubMock;
     private readonly ChatService _service;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -26,15 +27,16 @@ public class ChatServiceTests : IDisposable
             .Returns(Task.CompletedTask);
 
         _cacheMock = new Mock<ICacheService>();
+        _pubSubMock = new Mock<IPubSubService>();
 
         // Capture Subscribe calls
-        _cacheMock
-            .Setup(c => c.Subscribe(It.IsAny<string>(), It.IsAny<Action<string>>()))
+        _pubSubMock
+            .Setup(p => p.Subscribe(It.IsAny<string>(), It.IsAny<Action<string>>()))
             .Callback<string, Action<string>>((channel, handler) => _subscriptions[channel] = handler);
 
         // Make Publish trigger the local subscription (simulates single-node pub/sub)
-        _cacheMock
-            .Setup(c => c.PublishAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _pubSubMock
+            .Setup(p => p.PublishAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Returns<string, string, CancellationToken>((channel, message, _) =>
             {
                 if (_subscriptions.TryGetValue(channel, out var handler))
@@ -52,7 +54,7 @@ public class ChatServiceTests : IDisposable
         _cacheMock.Setup(c => c.HashGetAsync("chat:users", It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync((string?)null);
 
         var logger = new Mock<ILogger<ChatService>>();
-        _service = new ChatService(_cacheMock.Object, _auditMock.Object, logger.Object);
+        _service = new ChatService(_cacheMock.Object, _pubSubMock.Object, _auditMock.Object, logger.Object);
     }
 
     public void Dispose()
@@ -99,7 +101,7 @@ public class ChatServiceTests : IDisposable
     {
         await _service.RegisterUserAsync();
 
-        _cacheMock.Verify(c => c.PublishAsync(
+        _pubSubMock.Verify(p => p.PublishAsync(
             "chat:events:user_joined",
             It.IsAny<string>(),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -249,7 +251,7 @@ public class ChatServiceTests : IDisposable
 
         await _service.SendMessageAsync("user1", "Hello");
 
-        _cacheMock.Verify(c => c.PublishAsync(
+        _pubSubMock.Verify(p => p.PublishAsync(
             "chat:events:message",
             It.IsAny<string>(),
             It.IsAny<CancellationToken>()), Times.Once);
@@ -379,7 +381,7 @@ public class ChatServiceTests : IDisposable
 
         await _service.SetTypingAsync("user1", true);
 
-        _cacheMock.Verify(c => c.PublishAsync(
+        _pubSubMock.Verify(p => p.PublishAsync(
             "chat:events:typing",
             It.IsAny<string>(),
             It.IsAny<CancellationToken>()), Times.Once);

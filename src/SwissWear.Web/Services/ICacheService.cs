@@ -18,9 +18,4 @@ public interface ICacheService
     Task ListPushAsync(string key, string value, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> ListRangeAsync(string key, long start, long stop, CancellationToken cancellationToken = default);
     Task ListTrimAsync(string key, long start, long stop, CancellationToken cancellationToken = default);
-
-    // Pub/Sub
-    Task PublishAsync(string channel, string message, CancellationToken cancellationToken = default);
-    void Subscribe(string channel, Action<string> handler);
-    void UnsubscribeAll();
 }
