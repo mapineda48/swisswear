@@ -14,55 +14,85 @@ Browser <--SignalR--> ASP.NET Core Server <--EF Core--> PostgreSQL
 
 MudBlazor requires interactive rendering for its components (dialogs, snackbars, date pickers, etc.), so the `@rendermode InteractiveServer` directive is applied at the router level rather than per-page.
 
-## Project Layout
+## Solution Structure
+
+The solution follows **Clean Architecture** with three projects:
 
 ```
-src/SwissWear.Web/
-├── Program.cs                  # Composition root (DI, middleware pipeline)
-├── Components/
-│   ├── App.razor               # HTML document shell (head, scripts, styles)
-│   ├── Routes.razor            # Router with global InteractiveServer mode
-│   ├── _Imports.razor          # Global usings for all components
-│   ├── Layout/
-│   │   ├── MainLayout.razor    # MudBlazor layout (AppBar, Drawer, providers)
-│   │   ├── NavMenu.razor       # Navigation links
-│   │   ├── ChatWidget.razor    # Floating chat widget (real-time messaging)
-│   │   └── Chat/               # Chat sub-components
-│   │       ├── ChatInputBar.razor
-│   │       ├── ChatMessageBubble.razor
-│   │       ├── ChatAudioPlayer.razor
-│   │       ├── ChatImageGrid.razor
-│   │       └── ChatLightbox.razor
-│   └── Pages/
-│       ├── Home.razor          # Landing page with project info
-│       ├── People.razor        # People list with CRUD operations
-│       └── PersonDialog.razor  # Create/Edit dialog for a person
-├── Data/
-│   ├── AppDbContext.cs         # EF Core DbContext
-│   ├── Person.cs               # Person entity
-│   └── ChatMessageLog.cs       # Chat audit log entity
-├── Services/
-│   ├── IStorageService.cs      # File storage abstraction
-│   ├── AzureBlobStorageService.cs  # Azure Blob Storage implementation
-│   ├── ICacheService.cs        # Distributed cache abstraction (key-value, hash, list)
-│   ├── ValkeyCacheService.cs   # Valkey/Redis cache implementation
-│   ├── IPubSubService.cs       # Pub/Sub messaging abstraction
-│   ├── ValkeyPubSubService.cs  # Valkey/Redis Pub/Sub implementation
-│   ├── IChatService.cs         # Chat operations contract
-│   ├── ChatService.cs          # Chat logic (uses ICacheService + IPubSubService)
-│   ├── IChatAuditService.cs    # Chat audit logging contract
-│   ├── ChatAuditService.cs     # Persists chat messages to database
-│   └── PersonService.cs        # People business logic
-├── Resources/
-│   ├── AppStrings.cs           # Marker class for IStringLocalizer
-│   ├── AppStrings.resx         # English strings (default/fallback)
-│   └── AppStrings.es.resx      # Spanish strings
-└── Migrations/                 # EF Core migrations (auto-generated)
+src/
+├── SwissWear.Domain/              # Core layer — no external dependencies
+│   ├── Entities/
+│   │   ├── Person.cs              # Person entity
+│   │   └── ChatMessageLog.cs      # Chat audit log entity
+│   └── Contracts/
+│       ├── ICacheService.cs        # Distributed cache abstraction (key-value, hash, list)
+│       ├── IPubSubService.cs       # Pub/Sub messaging abstraction
+│       ├── IStorageService.cs      # File storage abstraction
+│       ├── IChatService.cs         # Chat operations contract
+│       ├── IChatAuditService.cs    # Chat audit logging contract
+│       └── ChatModels.cs           # ChatMessage, ImageData, ClientInfo, MessageType
+│
+├── SwissWear.Infrastructure/      # Infrastructure layer — depends on Domain
+│   ├── Data/
+│   │   └── AppDbContext.cs         # EF Core DbContext
+│   ├── Migrations/                 # EF Core migrations (auto-generated)
+│   ├── Services/
+│   │   ├── AzureBlobStorageService.cs   # IStorageService → Azure Blob Storage
+│   │   ├── ValkeyCacheService.cs        # ICacheService → Valkey/Redis
+│   │   ├── ValkeyPubSubService.cs       # IPubSubService → Valkey/Redis
+│   │   ├── ChatService.cs              # IChatService → distributed chat logic
+│   │   ├── ChatAuditService.cs          # IChatAuditService → PostgreSQL + Blob
+│   │   └── PersonService.cs            # People CRUD operations
+│   └── DependencyInjection.cs     # AddSwissWearInfrastructure() extension method
+│
+└── SwissWear.Web/                 # Presentation layer — depends on Domain + Infrastructure
+    ├── Program.cs                 # Composition root (DI, middleware pipeline)
+    ├── Components/
+    │   ├── App.razor              # HTML document shell (head, scripts, styles)
+    │   ├── Routes.razor           # Router with global InteractiveServer mode
+    │   ├── _Imports.razor         # Global usings for all components
+    │   ├── Layout/
+    │   │   ├── MainLayout.razor   # MudBlazor layout (AppBar, Drawer, providers)
+    │   │   ├── NavMenu.razor      # Navigation links
+    │   │   ├── ChatWidget.razor   # Floating chat widget (real-time messaging)
+    │   │   └── Chat/              # Chat sub-components
+    │   │       ├── ChatInputBar.razor
+    │   │       ├── ChatMessageBubble.razor
+    │   │       ├── ChatAudioPlayer.razor
+    │   │       ├── ChatImageGrid.razor
+    │   │       └── ChatLightbox.razor
+    │   └── Pages/
+    │       ├── Home.razor         # Landing page with project info
+    │       ├── People.razor       # People list with CRUD operations
+    │       └── PersonDialog.razor # Create/Edit dialog for a person
+    └── Resources/
+        ├── AppStrings.cs          # Marker class for IStringLocalizer
+        ├── AppStrings.resx        # English strings (default/fallback)
+        └── AppStrings.es.resx     # Spanish strings
+
+tests/
+└── SwissWear.Tests/               # Unit tests — references Domain + Infrastructure
 ```
+
+### Dependency Graph
+
+```
+SwissWear.Web ──→ SwissWear.Infrastructure ──→ SwissWear.Domain
+                                                     ↑
+SwissWear.Tests ─────────────────────────────────────┘
+```
+
+- **Domain** has zero NuGet dependencies — only framework types
+- **Infrastructure** owns all external packages: EF Core, Azure SDK, StackExchange.Redis
+- **Web** only adds MudBlazor and the EF Core Design package (for migration tooling)
 
 ## Dependency Injection
 
-Services are registered in `Program.cs`:
+Infrastructure services are registered via the `AddSwissWearInfrastructure()` extension method, keeping `Program.cs` clean:
+
+```csharp
+builder.Services.AddSwissWearInfrastructure(builder.Configuration);
+```
 
 | Service | Lifetime | Purpose |
 |---------|----------|---------|
@@ -98,7 +128,12 @@ No in-memory state is shared between requests or pods.
 PostgreSQL via Entity Framework Core 10 with Npgsql provider.
 
 - **Connection string** is configured per environment in `appsettings.{Environment}.json`
-- **Migrations** are managed with `dotnet ef` CLI
+- **Migrations** live in `SwissWear.Infrastructure` and are managed with:
+  ```bash
+  dotnet ef migrations add <Name> \
+    --project src/SwissWear.Infrastructure \
+    --startup-project src/SwissWear.Web
+  ```
 
 ### People
 
@@ -130,7 +165,7 @@ ChatMessageLogs
 
 ## Storage
 
-The `IStorageService` interface abstracts file operations:
+The `IStorageService` interface (Domain) abstracts file operations:
 
 ```csharp
 Task<string> UploadAsync(string fileName, Stream content, string contentType, CancellationToken ct);
@@ -144,7 +179,7 @@ Task<Uri> GetUriAsync(string fileName, CancellationToken ct);
 
 ## Cache and Pub/Sub
 
-Two separate abstractions keep concerns clean:
+Two separate abstractions (both in Domain) keep concerns clean:
 
 **`ICacheService`** — Data storage operations:
 - Key-value: `SetAsync<T>`, `GetAsync<T>`, `RemoveAsync`, `ExistsAsync`
@@ -156,7 +191,7 @@ Two separate abstractions keep concerns clean:
 - `Subscribe(channel, handler)`
 - `UnsubscribeAll()`
 
-Both are implemented by Valkey (Redis-compatible) via StackExchange.Redis. The separation allows replacing the messaging backend (e.g., RabbitMQ, Azure Service Bus) without affecting the cache layer.
+Both are implemented by Valkey (Redis-compatible) via StackExchange.Redis in Infrastructure. The separation allows replacing the messaging backend (e.g., RabbitMQ, Azure Service Bus) without affecting the cache layer.
 
 ## Chat System
 
